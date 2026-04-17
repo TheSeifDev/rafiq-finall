@@ -6,48 +6,77 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  ActivityIndicator,
+  ScrollView
 } from 'react-native'
 import { supabase } from '../lib/supabase'
 
 export default function Auth() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('') 
   const [loading, setLoading] = useState(false)
 
+  // دالة تسجيل الدخول
   async function signInWithEmail() {
+    if (!email || !password) {
+      Alert.alert('تنبيه', 'يرجى إدخال البريد وكلمة المرور');
+      return;
+    }
     setLoading(true)
-
     const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+      email: email,
+      password: password,
     })
 
-    if (error) Alert.alert(error.message)
-
+    if (error) Alert.alert('خطأ', error.message)
     setLoading(false)
   }
 
+  // دالة إنشاء حساب جديد (محدثة لترسل الاسم للـ Trigger)
   async function signUpWithEmail() {
+    if (!email || !password || !fullName) {
+      Alert.alert('تنبيه', 'يرجى ملء جميع الخانات بما فيها الاسم');
+      return;
+    }
     setLoading(true)
-
     const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
+      email: email,
+      password: password,
+      options: {
+        data: {
+          full_name: fullName, // ده اللي هيروح لجدول profiles
+        },
+      },
     })
 
-    if (error) Alert.alert(error.message)
-
-    if (!data.session) {
-      Alert.alert('Please check your inbox for email verification!')
+    if (error) {
+      Alert.alert('خطأ في التسجيل', error.message)
+    } else {
+      if (!data.session) {
+        Alert.alert('نجاح', 'يرجى التحقق من بريدك الإلكتروني لتفعيل الحساب');
+      }
     }
-
     setLoading(false)
   }
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.verticallySpaced, styles.mt20]}>
-        <Text style={styles.label}>Email</Text>
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.headerText}>أهلاً بك في رفيق</Text>
+
+      {/* خانة الاسم بالكامل */}
+      <View style={styles.verticallySpaced}>
+        <Text style={styles.label}>الاسم بالكامل</Text>
+        <TextInput
+          onChangeText={setFullName}
+          value={fullName}
+          placeholder="أدخل اسمك الثلاثي"
+          style={styles.input}
+        />
+      </View>
+
+      <View style={styles.verticallySpaced}>
+        <Text style={styles.label}>البريد الإلكتروني</Text>
         <TextInput
           onChangeText={setEmail}
           value={email}
@@ -59,7 +88,7 @@ export default function Auth() {
       </View>
 
       <View style={styles.verticallySpaced}>
-        <Text style={styles.label}>Password</Text>
+        <Text style={styles.label}>كلمة المرور</Text>
         <TextInput
           onChangeText={setPassword}
           value={password}
@@ -76,54 +105,74 @@ export default function Auth() {
           onPress={signInWithEmail}
           disabled={loading}
         >
-          <Text style={styles.buttonText}>Sign in</Text>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>تسجيل الدخول</Text>}
         </TouchableOpacity>
       </View>
 
       <View style={styles.verticallySpaced}>
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
+          style={[styles.buttonOutline, loading && styles.buttonDisabled]}
           onPress={signUpWithEmail}
           disabled={loading}
         >
-          <Text style={styles.buttonText}>Sign up</Text>
+          <Text style={styles.buttonOutlineText}>إنشاء حساب جديد</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 40,
-    padding: 12,
+    padding: 20,
+    flexGrow: 1,
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+  },
+  headerText: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#191D32',
+    textAlign: 'center',
+    marginBottom: 30,
   },
   verticallySpaced: {
-    paddingTop: 4,
-    paddingBottom: 4,
+    paddingVertical: 8,
     alignSelf: 'stretch',
   },
   mt20: {
     marginTop: 20,
   },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#86939e',
+    color: '#64748B',
     marginBottom: 6,
+    textAlign: 'right',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#86939e',
-    borderRadius: 4,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
     padding: 12,
     fontSize: 16,
+    backgroundColor: '#FFFFFF',
+    textAlign: 'right',
   },
   button: {
-    backgroundColor: '#2089dc',
-    borderRadius: 4,
-    padding: 12,
+    backgroundColor: '#0077C8', // لون رفيق المعتمد
+    borderRadius: 8,
+    padding: 15,
     alignItems: 'center',
+  },
+  buttonOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#0077C8',
+    borderRadius: 8,
+    padding: 15,
+    alignItems: 'center',
+    marginTop: 10,
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -131,6 +180,11 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
+  },
+  buttonOutlineText: {
+    color: '#0077C8',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 })

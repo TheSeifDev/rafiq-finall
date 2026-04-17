@@ -1,0 +1,41 @@
+export const colors = {
+  primary: '#0077C8',
+  primaryDark: '#005A9C',
+  primaryLight: '#E6F2FB',
+  background: '#FFFFFF',
+  backgroundDark: '#0A0E17',
+  surface: '#F8FAFC',
+  surfaceDark: '#1E2330',
+  card: '#F8FAFC',
+  cardDark: '#1E2330',
+  border: '#E2E8F0',
+  borderDark: '#334155',
+  text: {
+    primary: '#191D32',
+    primaryDark: '#FFFFFF',
+    secondary: '#64748B',
+    secondaryDark: '#94A3B8',
+    disabled: '#CBD5E1',
+    disabledDark: '#475569',
+    inverse: '#FFFFFF',
+    inverseDark: '#191D32',
+  },
+  status: {
+    success: '#10B981',
+    successLight: '#D1FAE5',
+    error: '#EF4444',
+    errorLight: '#FEE2E2',
+    warning: '#F59E0B',
+    warningLight: '#FEF3C7',
+    info: '#00C2FF',
+    infoLight: '#E0F7FF',
+  },
+  accent: {
+    purple: '#A855F7',
+    red: '#FF453A',
+    cyan: '#00C2FF',
+    green: '#4ADE80',
+  },
+} as const;
+
+export type Colors = typeof colors;
