@@ -6,7 +6,7 @@ import {
   Animated, Platform
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase'; 
+import { supabase } from '../services/supabase'; 
 import { useTheme } from '../context/ThemeContext';
 
 // --- Types & Interfaces ---
@@ -96,9 +96,6 @@ export default function HomeScreen({ onNavigate }: HomeProps) {
   const [userName, setUserName] = useState('جاري التحميل...');
   const [vitals, setVitals] = useState({ heart_rate: 0 });
   const [hasNewNotif, setHasNewNotif] = useState(false);
-interface HomeProps {
-  onNavigate: (screen: any) => void;
-}
   useEffect(() => {
     fetchUserData();
     const subscription = subscribeToNotifications();

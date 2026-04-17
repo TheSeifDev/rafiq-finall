@@ -17,7 +17,7 @@ import {
   Pressable,
   Animated
 } from 'react-native';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../services/supabase';
 import { useTheme } from '../context/ThemeContext';
 
 interface LoginProps {
