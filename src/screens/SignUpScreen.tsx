@@ -17,7 +17,7 @@ import {
   Easing
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase'; 
+import { supabase } from '../services/supabase';
 import { useTheme } from '../context/ThemeContext';
 
 const { height: SH } = Dimensions.get('window');

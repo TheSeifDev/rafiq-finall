@@ -9,6 +9,8 @@ export interface ThemeColors {
   card: string;
   text: string;
   textSecondary: string;
+  /** Alias for textSecondary — used by legacy screens */
+  subText: string;
   textDisabled: string;
   textInverse: string;
   primary: string;
@@ -31,6 +33,7 @@ export const lightTheme: ThemeColors = {
   card: colors.card,
   text: colors.text.primary,
   textSecondary: colors.text.secondary,
+  subText: colors.text.secondary,
   textDisabled: colors.text.disabled,
   textInverse: colors.text.inverse,
   primary: colors.primary,
@@ -53,6 +56,7 @@ export const darkTheme: ThemeColors = {
   card: colors.cardDark,
   text: colors.text.primaryDark,
   textSecondary: colors.text.secondaryDark,
+  subText: colors.text.secondaryDark,
   textDisabled: colors.text.disabledDark,
   textInverse: colors.text.inverseDark,
   primary: colors.primary,
