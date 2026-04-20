@@ -1,47 +1,13 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { View } from 'react-native';
+import { AppButton } from './AppButton';
 import { AppText } from './AppText';
-import { useTheme } from '../../store/ThemeContext';
-import { spacing } from '../../theme';
 
-interface EmptyStateProps {
-  icon?: keyof typeof MaterialCommunityIcons.glyphMap;
-  message: string;
-}
-
-export function EmptyState({
-  icon = 'clipboard-text-outline',
-  message,
-}: EmptyStateProps) {
-  const { colors } = useTheme();
-
+export function EmptyState({ title, actionLabel, onAction }: { title: string; actionLabel?: string; onAction?: () => void }): React.JSX.Element {
   return (
-    <View style={styles.container}>
-      <MaterialCommunityIcons
-        name={icon}
-        size={80}
-        color={colors.textDisabled}
-      />
-      <AppText
-        variant="bodySmall"
-        color={colors.textSecondary}
-        align="center"
-        style={styles.message}
-      >
-        {message}
-      </AppText>
+    <View style={{ alignItems: 'center', gap: 8, paddingVertical: 24 }}>
+      <AppText>{title}</AppText>
+      {actionLabel && onAction ? <AppButton title={actionLabel} onPress={onAction} /> : null}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxl,
-  },
-  message: {
-    marginTop: spacing.md,
-  },
-});
