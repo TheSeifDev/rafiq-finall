@@ -1,39 +1,26 @@
 import React from 'react';
-import { View, StyleSheet, ViewStyle, StyleProp } from 'react-native';
-import { useTheme } from '../../store/ThemeContext';
-import { spacing, radius, shadows } from '../../theme';
+import { View, type ViewProps } from 'react-native';
+import { radius, spacing } from '../../theme';
+import { useTheme } from '../../theme/useTheme';
 
-interface AppCardProps {
-  children: React.ReactNode;
-  style?: StyleProp<ViewStyle>;
-  padded?: boolean;
-}
-
-export function AppCard({ children, style, padded = true }: AppCardProps) {
+export function AppCard({ style, ...props }: ViewProps): React.JSX.Element {
   const { colors } = useTheme();
-
   return (
     <View
+      {...props}
       style={[
-        styles.card,
-        shadows.sm,
         {
-          backgroundColor: colors.card,
+          backgroundColor: colors.surface,
+          borderRadius: radius.card,
+          padding: spacing.md,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+          elevation: 2,
         },
-        padded && styles.padded,
         style,
       ]}
-    >
-      {children}
-    </View>
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    borderRadius: radius.xl,
-  },
-  padded: {
-    padding: spacing.lg,
-  },
-});

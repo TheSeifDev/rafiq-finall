@@ -1,37 +1,11 @@
 import React from 'react';
-import { Text, TextStyle, StyleProp } from 'react-native';
-import { typography, TypographyVariant } from '../../theme';
-import { useTheme } from '../../store/ThemeContext';
+import { Text, type TextProps } from 'react-native';
+import { typography } from '../../theme';
+import { useTheme } from '../../theme/useTheme';
 
-interface AppTextProps {
-  variant?: TypographyVariant;
-  color?: string;
-  style?: StyleProp<TextStyle>;
-  children: React.ReactNode;
-  numberOfLines?: number;
-  align?: TextStyle['textAlign'];
-}
+type Variant = keyof typeof typography;
 
-export function AppText({
-  variant = 'body',
-  color,
-  style,
-  children,
-  numberOfLines,
-  align = 'right',
-}: AppTextProps) {
-  const { colors } = useTheme();
-
-  return (
-    <Text
-      numberOfLines={numberOfLines}
-      style={[
-        typography[variant],
-        { color: color ?? colors.text, textAlign: align },
-        style,
-      ]}
-    >
-      {children}
-    </Text>
-  );
+export function AppText({ variant = 'body', style, ...props }: TextProps & { variant?: Variant }): React.JSX.Element {
+  const { colors, isRTL } = useTheme();
+  return <Text {...props} style={[typography[variant], { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }, style]} />;
 }

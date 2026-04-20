@@ -1,6 +1,46 @@
-{ 
+{
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true
-  }
+  },
+  "files": [
+    "index.ts",
+    "App.tsx",
+    "src/constants/translations.ts",
+    "src/theme/index.ts",
+    "src/theme/useTheme.ts",
+    "src/store/app.store.ts",
+    "src/store/auth.store.ts",
+    "src/lib/supabase.ts",
+    "src/services/auth.service.ts",
+    "src/services/patient.service.ts",
+    "src/services/vitals.service.ts",
+    "src/services/medication.service.ts",
+    "src/services/notification.service.ts",
+    "src/services/chat.service.ts",
+    "src/services/bluetooth.service.ts",
+    "src/navigation/types.ts",
+    "src/navigation/linking.ts",
+    "src/navigation/RootNavigator.tsx",
+    "src/components/ui/AppText.tsx",
+    "src/components/ui/AppCard.tsx",
+    "src/components/ui/AppButton.tsx",
+    "src/components/ui/AppInput.tsx",
+    "src/components/ui/Screen.tsx",
+    "src/components/ui/LoadingOverlay.tsx",
+    "src/components/ui/EmptyState.tsx",
+    "src/components/ui/ErrorMessage.tsx",
+    "src/components/ui/BottomTabBar.tsx",
+    "src/screens/WelcomeScreen.tsx",
+    "src/screens/LoginScreen.tsx",
+    "src/screens/SignUpScreen.tsx",
+    "src/screens/HomeScreen.tsx",
+    "src/screens/VitalsScreen.tsx",
+    "src/screens/EmergencyScreen.tsx",
+    "src/screens/ChatScreen.tsx",
+    "src/screens/ProfileScreen.tsx",
+    "src/screens/SettingsScreen.tsx",
+    "src/screens/MedicationsScreen.tsx",
+    "src/screens/EditProfileScreen.tsx"
+  ]
 }

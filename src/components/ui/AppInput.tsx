@@ -1,101 +1,20 @@
-import React, { useState } from 'react';
-import { View, TextInput, StyleSheet, TextInputProps, TouchableOpacity } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import React from 'react';
+import { TextInput, View, type TextInputProps } from 'react-native';
+import { radius, spacing } from '../../theme';
+import { useTheme } from '../../theme/useTheme';
 import { AppText } from './AppText';
-import { ErrorMessage } from './ErrorMessage';
-import { useTheme } from '../../store/ThemeContext';
-import { spacing, radius, typography } from '../../theme';
 
-interface AppInputProps extends Omit<TextInputProps, 'style'> {
-  label?: string;
-  error?: string;
-  icon?: keyof typeof MaterialCommunityIcons.glyphMap;
-}
-
-export function AppInput({
-  label,
-  error,
-  icon,
-  secureTextEntry,
-  ...rest
-}: AppInputProps) {
-  const { colors, isDarkMode } = useTheme();
-  const [isSecure, setIsSecure] = useState(secureTextEntry ?? false);
-
+export function AppInput({ label, error, style, ...props }: TextInputProps & { label?: string; error?: string }): React.JSX.Element {
+  const { colors, isRTL } = useTheme();
   return (
-    <View style={styles.wrapper}>
-      {label && (
-        <AppText variant="label" style={styles.label}>
-          {label}
-        </AppText>
-      )}
-      <View
-        style={[
-          styles.inputContainer,
-          {
-            backgroundColor: isDarkMode ? colors.surface : colors.background,
-            borderColor: error ? colors.statusError : colors.border,
-          },
-        ]}
-      >
-        {icon && (
-          <MaterialCommunityIcons
-            name={icon}
-            size={22}
-            color={colors.primary}
-            style={styles.icon}
-          />
-        )}
-        <TextInput
-          style={[
-            styles.input,
-            { color: colors.text },
-          ]}
-          placeholderTextColor={colors.textSecondary + '80'}
-          autoCapitalize="none"
-          textAlign="right"
-          secureTextEntry={isSecure}
-          {...rest}
-        />
-        {secureTextEntry && (
-          <TouchableOpacity
-            onPress={() => setIsSecure(!isSecure)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <MaterialCommunityIcons
-              name={isSecure ? 'eye-off-outline' : 'eye-outline'}
-              size={22}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
-        )}
-      </View>
-      {error && <ErrorMessage message={error} />}
+    <View style={{ gap: spacing.xs }}>
+      {label ? <AppText variant="caption">{label}</AppText> : null}
+      <TextInput
+        {...props}
+        style={[{ minHeight: 44, borderRadius: radius.input, borderWidth: 1, borderColor: error ? colors.danger : colors.textSecondary, paddingHorizontal: spacing.md, color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }, style]}
+        placeholderTextColor={colors.textSecondary}
+      />
+      {error ? <AppText variant="small" style={{ color: colors.danger }}>{error}</AppText> : null}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrapper: {
-    marginBottom: spacing.md,
-  },
-  label: {
-    marginBottom: spacing.sm,
-  },
-  inputContainer: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    height: 56,
-  },
-  icon: {
-    marginLeft: spacing.sm,
-  },
-  input: {
-    flex: 1,
-    ...typography.body,
-    paddingVertical: 0,
-  },
-});
