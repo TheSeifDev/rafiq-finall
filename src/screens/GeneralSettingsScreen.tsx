@@ -4,7 +4,7 @@ import {
   Text,
   View,
   TouchableOpacity,
-  SafeAreaView,
+  
   ScrollView,
   StatusBar,
   Switch,
@@ -12,6 +12,7 @@ import {
   Pressable,
   Animated
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 
