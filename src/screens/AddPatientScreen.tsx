@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
-  StyleSheet, Text, View, SafeAreaView,
+  StyleSheet, Text, View, 
   TouchableOpacity, TextInput, ScrollView,
   Alert, ActivityIndicator, KeyboardAvoidingView, Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useTheme } from '../context/ThemeContext';

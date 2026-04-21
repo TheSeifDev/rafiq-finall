@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  StyleSheet, Text, View, SafeAreaView, TouchableOpacity, 
+  StyleSheet, Text, View,  TouchableOpacity, 
   FlatList, Modal, TextInput, ActivityIndicator, Alert 
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 
