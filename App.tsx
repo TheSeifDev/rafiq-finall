@@ -1,30 +1,43 @@
-import React from 'react';
-import { AuthProvider } from './src/store/AuthContext';
-import { ThemeProvider } from './src/store/ThemeContext';
-import { AppNavigator } from './src/navigation/AppNavigator';
-import {
-  useFonts,
-  SpaceGrotesk_700Bold,
-} from '@expo-google-fonts/space-grotesk';
-import {
-  Manrope_400Regular,
-  Manrope_600SemiBold,
-} from '@expo-google-fonts/manrope';
+import React, { useEffect } from 'react';
+import { I18nManager, Platform } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import * as Localization from 'expo-localization';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { RootNavigator } from './src/navigation/RootNavigator';
+import { useAppStore } from './src/store/app.store';
+import { linking } from './src/navigation/linking';
+import { useAuthStore } from './src/store/auth.store';
 
-export default function App() {
-  const [fontsLoaded] = useFonts({
-    SpaceGrotesk_700Bold,
-    Manrope_400Regular,
-    Manrope_600SemiBold,
-  });
+function Boot(): React.JSX.Element {
+  const initialize = useAuthStore((state) => state.initialize);
+  const language = useAppStore((state) => state.language);
+  const hydrate = useAppStore((state) => state.hydrate);
 
-  if (!fontsLoaded) return null;
+  useEffect(() => {
+    hydrate(Localization.getLocales()[0]?.languageCode === 'ar' ? 'ar' : 'en').catch(() => undefined);
+    initialize().catch(() => undefined);
+  }, [hydrate, initialize]);
 
+  useEffect(() => {
+    const shouldBeRTL = language === 'ar';
+    if (I18nManager.isRTL !== shouldBeRTL) {
+      I18nManager.allowRTL(shouldBeRTL);
+      I18nManager.forceRTL(shouldBeRTL);
+      if (Platform.OS !== 'web') {
+        // Requires app restart to fully apply.
+      }
+    }
+  }, [language]);
+
+  return <RootNavigator />;
+}
+
+export default function App(): React.JSX.Element {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppNavigator />
-      </AuthProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <NavigationContainer linking={linking}>
+        <Boot />
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }

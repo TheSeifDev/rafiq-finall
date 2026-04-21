@@ -1,80 +1,32 @@
-import { supabase } from './supabase';
-import type { ChatMessage, ChatMessageInsert } from '../types/database';
+export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
-const EDGE_FUNCTION_URL = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/chat-ai`;
+const systemPrompt = 'You are Rafiq, a helpful health assistant. Provide general health information, remind users this is not medical advice, and suggest seeing a doctor for serious concerns.';
 
-export const chatService = {
-  /**
-   * Load the full chat history for a user, oldest first (for list display).
-   */
-  async getHistory(userId: string, limit = 50): Promise<ChatMessage[]> {
-    const { data, error } = await supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true })
-      .limit(limit);
+export async function sendChat(messages: ChatMessage[], vitalsSummary: string): Promise<string> {
+  const key = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+  if (!key) {
+    return 'يرجى إعداد EXPO_PUBLIC_OPENAI_API_KEY لتفعيل المساعد الصحي.';
+  }
 
-    if (error) throw new Error(error.message);
-    return (data as ChatMessage[]) ?? [];
-  },
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: `${systemPrompt}\nLatest vitals: ${vitalsSummary}` },
+        ...messages,
+      ],
+      temperature: 0.4,
+    }),
+  });
 
-  /**
-   * Persist a message to the DB.
-   */
-  async saveMessage(
-    message: ChatMessageInsert
-  ): Promise<{ data: ChatMessage | null; error: string | null }> {
-    const { data, error } = await supabase
-      .from('chat_messages')
-      .insert([message])
-      .select()
-      .single();
-
-    return {
-      data: error ? null : (data as ChatMessage),
-      error: error?.message ?? null,
-    };
-  },
-
-  /**
-   * Call the Edge Function to get an AI reply.
-   * Passes the last 10 messages as conversation history.
-   */
-  async getAIReply(
-    userMessage: string,
-    history: Array<{ role: string; content: string }>
-  ): Promise<{ reply: string; source: 'gemini' | 'fallback' }> {
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
-
-    const response = await fetch(EDGE_FUNCTION_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token ?? ''}`,
-      },
-      body: JSON.stringify({
-        message: userMessage,
-        history: history.slice(-10), // last 10 messages as context
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Edge function error: ${response.status}`);
-    }
-
-    const json = await response.json();
-    return {
-      reply: json.reply ?? 'عذراً، حدث خطأ في الاتصال.',
-      source: json.source ?? 'fallback',
-    };
-  },
-
-  /**
-   * Delete all chat messages for a user (clear conversation).
-   */
-  async clearHistory(userId: string): Promise<void> {
-    await supabase.from('chat_messages').delete().eq('user_id', userId);
-  },
-};
+  if (!response.ok) {
+    return 'تعذر الوصول إلى خدمة الذكاء الاصطناعي حالياً.';
+  }
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  return data.choices?.[0]?.message?.content ?? 'لا توجد استجابة حالياً.';
+}
