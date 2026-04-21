@@ -1,24 +1,9 @@
 import React from 'react';
 import { AppText } from './AppText';
-import { useTheme } from '../../store/ThemeContext';
-import { spacing } from '../../theme';
+import { useTheme } from '../../theme/useTheme';
 
-interface ErrorMessageProps {
-  message: string;
-}
-
-export function ErrorMessage({ message }: ErrorMessageProps) {
+export function ErrorMessage({ message }: { message?: string }): React.JSX.Element | null {
   const { colors } = useTheme();
-
   if (!message) return null;
-
-  return (
-    <AppText
-      variant="caption"
-      color={colors.statusError}
-      style={{ marginTop: spacing.xs }}
-    >
-      {message}
-    </AppText>
-  );
+  return <AppText style={{ color: colors.danger }}>{message}</AppText>;
 }
