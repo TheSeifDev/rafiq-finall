@@ -1,40 +1,30 @@
-import { supabase } from './supabase';
-import type { PatientHealth, VitalRecord } from '../types/database';
+import { supabase } from '../lib/supabase';
+
+export type VitalsRecord = {
+  id: string;
+  patient_id: string;
+  heart_rate: number | null;
+  blood_pressure_systolic: number | null;
+  blood_pressure_diastolic: number | null;
+  oxygen_saturation: number | null;
+  temperature: number | null;
+  source: 'manual' | 'smartwatch' | 'bluetooth';
+  recorded_at: string;
+};
 
 export const vitalsService = {
-  async getLastHeartRate(userId: string): Promise<number> {
-    const { data } = await supabase
-      .from('vitals')
-      .select('heart_rate')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-
-    return data?.heart_rate ?? 0;
-  },
-
-  async getVitalsHistory(patientId: string): Promise<PatientHealth[]> {
-    const { data, error } = await supabase
-      .from('patient_health')
-      .select('*')
-      .eq('patient_id', patientId)
-      .order('created_at', { ascending: false });
-
+  async getVitalsHistory(patientId: string): Promise<VitalsRecord[]> {
+    const { data, error } = await supabase.from('vitals').select('*').eq('patient_id', patientId).order('recorded_at', { ascending: false });
     if (error) throw new Error(error.message);
-    return (data as PatientHealth[]) || [];
+    return (data ?? []) as VitalsRecord[];
   },
-
-  subscribeToNotifications(callback: () => void) {
-    const channel = supabase
-      .channel('notification-changes')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications' },
-        () => callback()
-      )
-      .subscribe();
-
-    return channel;
+  async saveVitals(payload: Omit<VitalsRecord, 'id'>): Promise<void> {
+    const { error } = await supabase.from('vitals').insert(payload);
+    if (error) throw new Error(error.message);
+  },
+  async getLatestVitals(patientId: string): Promise<VitalsRecord | null> {
+    const { data, error } = await supabase.from('vitals').select('*').eq('patient_id', patientId).order('recorded_at', { ascending: false }).limit(1).maybeSingle();
+    if (error) throw new Error(error.message);
+    return (data as VitalsRecord | null) ?? null;
   },
 };

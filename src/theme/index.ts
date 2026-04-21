@@ -1,87 +1,38 @@
-import { colors } from './colors';
-import { typography } from './typography';
-import { spacing, radius } from './spacing';
-import { shadows } from './shadows';
+export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, '2xl': 48 } as const;
 
-export interface ThemeColors {
-  background: string;
-  surface: string;
-  card: string;
-  text: string;
-  textSecondary: string;
-  /** Alias for textSecondary — used by legacy screens */
-  subText: string;
-  textDisabled: string;
-  textInverse: string;
-  primary: string;
-  primaryDark: string;
-  primaryLight: string;
-  border: string;
-  statusSuccess: string;
-  statusError: string;
-  statusWarning: string;
-  statusInfo: string;
-  accentPurple: string;
-  accentRed: string;
-  accentCyan: string;
-  accentGreen: string;
-}
-
-export const lightTheme: ThemeColors = {
-  background: colors.background,
-  surface: colors.surface,
-  card: colors.card,
-  text: colors.text.primary,
-  textSecondary: colors.text.secondary,
-  subText: colors.text.secondary,
-  textDisabled: colors.text.disabled,
-  textInverse: colors.text.inverse,
-  primary: colors.primary,
-  primaryDark: colors.primaryDark,
-  primaryLight: colors.primaryLight,
-  border: colors.border,
-  statusSuccess: colors.status.success,
-  statusError: colors.status.error,
-  statusWarning: colors.status.warning,
-  statusInfo: colors.status.info,
-  accentPurple: colors.accent.purple,
-  accentRed: colors.accent.red,
-  accentCyan: colors.accent.cyan,
-  accentGreen: colors.accent.green,
+export const typography = {
+  display: { fontSize: 28, fontWeight: '700' as const },
+  h1: { fontSize: 24, fontWeight: '700' as const },
+  h2: { fontSize: 20, fontWeight: '600' as const },
+  body: { fontSize: 16, fontWeight: '400' as const },
+  caption: { fontSize: 14, fontWeight: '400' as const },
+  small: { fontSize: 12, fontWeight: '400' as const },
 };
 
-export const darkTheme: ThemeColors = {
-  background: colors.backgroundDark,
-  surface: colors.surfaceDark,
-  card: colors.cardDark,
-  text: colors.text.primaryDark,
-  textSecondary: colors.text.secondaryDark,
-  subText: colors.text.secondaryDark,
-  textDisabled: colors.text.disabledDark,
-  textInverse: colors.text.inverseDark,
-  primary: colors.primary,
-  primaryDark: colors.primaryDark,
-  primaryLight: colors.primaryLight,
-  border: colors.borderDark,
-  statusSuccess: colors.status.success,
-  statusError: colors.status.error,
-  statusWarning: colors.status.warning,
-  statusInfo: colors.status.info,
-  accentPurple: colors.accent.purple,
-  accentRed: colors.accent.red,
-  accentCyan: colors.accent.cyan,
-  accentGreen: colors.accent.green,
+export const radius = { card: 16, button: 14, input: 12 } as const;
+
+export const lightColors = {
+  primary: '#0077C8',
+  secondary: '#00C2FF',
+  success: '#10B981',
+  warning: '#F59E0B',
+  danger: '#EF4444',
+  background: '#F8FAFC',
+  surface: '#FFFFFF',
+  textPrimary: '#1E293B',
+  textSecondary: '#64748B',
 };
 
-export const theme = {
-  colors,
-  typography,
-  spacing,
-  radius,
-  shadows,
-  light: lightTheme,
-  dark: darkTheme,
-} as const;
+export const darkColors = {
+  primary: '#0077C8',
+  secondary: '#00C2FF',
+  success: '#10B981',
+  warning: '#F59E0B',
+  danger: '#EF4444',
+  background: '#0F172A',
+  surface: '#1E293B',
+  textPrimary: '#F1F5F9',
+  textSecondary: '#94A3B8',
+};
 
-export { colors, typography, spacing, radius, shadows };
-export type { TypographyVariant } from './typography';
+export type ThemeColors = typeof lightColors;
