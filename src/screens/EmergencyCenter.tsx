@@ -1,9 +1,10 @@
 import React from 'react';
 import { 
   StyleSheet, Text, View, ScrollView, 
-  TouchableOpacity, SafeAreaView, StatusBar, 
+  TouchableOpacity,  StatusBar, 
   Linking, Platform 
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 interface EmergencyItem {
