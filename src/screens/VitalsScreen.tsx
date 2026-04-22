@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { Screen } from '../components/ui/Screen';
 import { AppCard } from '../components/ui/AppCard';
@@ -11,6 +11,7 @@ import { useAuthStore } from '../store/auth.store';
 import { patientService } from '../services/patient.service';
 import { vitalsService, type VitalsRecord } from '../services/vitals.service';
 import { BluetoothService } from '../services/bluetooth.service';
+import { toFiniteNumberOrNull } from '../utils/number';
 
 export function VitalsScreen(): React.JSX.Element {
   const session = useAuthStore((state) => state.session);
@@ -19,10 +20,22 @@ export function VitalsScreen(): React.JSX.Element {
   const [connecting, setConnecting] = useState(false);
 
   const chart = useMemo(() => {
-    const points = records.slice(0, 7).reverse();
+    const points = records
+      .slice(0, 7)
+      .reverse()
+      .map((item) => {
+        const value = toFiniteNumberOrNull(item.heart_rate);
+        if (value === null) return null;
+        return {
+          label: typeof item.recorded_at === 'string' ? item.recorded_at.slice(5, 10) : '--',
+          value,
+        };
+      })
+      .filter((point): point is { label: string; value: number } => point !== null);
+
     return {
-      labels: points.map((item) => item.recorded_at.slice(5, 10)),
-      datasets: [{ data: points.map((item) => item.heart_rate ?? 0) }],
+      labels: points.map((item) => item.label),
+      datasets: [{ data: points.map((item) => item.value) }],
     };
   }, [records]);
 
@@ -64,11 +77,16 @@ export function VitalsScreen(): React.JSX.Element {
               title="حفظ القراءة"
               onPress={async () => {
                 if (!session?.user.id) return;
+                const parsedHeartRate = toFiniteNumberOrNull(heartRate);
+                if (parsedHeartRate === null || parsedHeartRate <= 0) {
+                  Alert.alert('Invalid heart rate', 'Please enter a valid positive heart rate value.');
+                  return;
+                }
                 const profile = await patientService.getProfile(session.user.id);
                 if (!profile) return;
                 await vitalsService.saveVitals({
                   patient_id: profile.id,
-                  heart_rate: Number(heartRate),
+                  heart_rate: parsedHeartRate,
                   blood_pressure_systolic: null,
                   blood_pressure_diastolic: null,
                   oxygen_saturation: null,
