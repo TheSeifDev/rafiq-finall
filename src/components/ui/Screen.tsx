@@ -1,5 +1,6 @@
 import React from 'react';
-import { SafeAreaView, StatusBar, View, type ViewProps } from 'react-native';
+import { StatusBar, View, type ViewProps } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme/useTheme';
 
 export function Screen({ style, ...props }: ViewProps): React.JSX.Element {
