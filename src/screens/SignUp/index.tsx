@@ -1,5 +1,13 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { View, Image, StyleSheet, Animated, Keyboard, TouchableWithoutFeedback, Alert } from 'react-native';
+import {
+  View,
+  Image,
+  StyleSheet,
+  Animated,
+  Keyboard,
+  TouchableWithoutFeedback,
+  Alert,
+} from 'react-native';
 import { Screen, AppText, AppButton, AppInput, Spacer, ErrorMessage } from '../../components/ui';
 import { useTheme } from '../../store/ThemeContext';
 import { useAuth } from '../../store/AuthContext';
@@ -66,11 +74,7 @@ export default function SignUpScreen({ navigation }: AuthScreenProps<typeof Rout
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={{ flex: 1 }}>
-        <Screen
-          scrollable
-          backgroundColor={isDarkMode ? colors.background : colors.surface}
-          statusBarStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        >
+        <Screen style={{ flex: 1, backgroundColor: isDarkMode ? colors.background : colors.surface }}>
           <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
             <View style={styles.headerSection}>
               <Image
@@ -78,11 +82,11 @@ export default function SignUpScreen({ navigation }: AuthScreenProps<typeof Rout
                 style={styles.logo}
                 resizeMode="contain"
               />
-              <AppText variant="h2" align="center">
+              <AppText variant="h2" style={{ textAlign: 'center' }}>
                 إنشاء حساب
               </AppText>
               <Spacer size="xs" />
-              <AppText variant="bodySmall" color={colors.textSecondary} align="center">
+              <AppText variant="body" color={colors.textSecondary} style={{ textAlign: 'center' }}>
                 أنشئ حسابك لبدء استخدام رفيق
               </AppText>
             </View>
@@ -99,59 +103,55 @@ export default function SignUpScreen({ navigation }: AuthScreenProps<typeof Rout
             <AppInput
               label="الاسم الكامل"
               placeholder="أدخل اسمك الكامل"
-              icon="account-outline"
               value={fullName}
               onChangeText={setFullName}
-              returnKeyType="next"
+              textContentType="name"
             />
 
             <AppInput
               label="البريد الإلكتروني"
               placeholder="أدخل بريدك الإلكتروني"
-              icon="email-outline"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
-              returnKeyType="next"
+              autoCapitalize="none"
+              textContentType="emailAddress"
             />
 
             <AppInput
               label="كلمة المرور"
               placeholder="أدخل كلمة المرور"
-              icon="lock-outline"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
-              returnKeyType="next"
+              textContentType="password"
             />
 
             <AppInput
               label="تأكيد كلمة المرور"
               placeholder="أعد إدخال كلمة المرور"
-              icon="lock-check-outline"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
-              returnKeyType="done"
+              textContentType="password"
               onSubmitEditing={handleSignUp}
             />
 
             <Spacer size="lg" />
 
             <AppButton
-              label="إنشاء حساب"
+              title="إنشاء حساب"
               onPress={handleSignUp}
               loading={loading}
               disabled={loading}
-              size="lg"
             />
 
             <Spacer size="lg" />
 
             <AppButton
-              label="لديك حساب بالفعل؟ سجّل دخولك"
+              title="لديك حساب بالفعل؟ سجّل دخولك"
               onPress={() => navigation.navigate(Routes.Login)}
-              variant="ghost"
+              variant="outlined"
             />
           </Animated.View>
         </Screen>
@@ -162,6 +162,7 @@ export default function SignUpScreen({ navigation }: AuthScreenProps<typeof Rout
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     paddingTop: spacing.xl,
     paddingHorizontal: spacing.sm,
   },

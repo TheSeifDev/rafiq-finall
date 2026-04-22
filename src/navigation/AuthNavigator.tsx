@@ -15,7 +15,8 @@ export function AuthNavigator() {
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
-        animation: 'slide_from_left',
+        animation: 'slide_from_right',
+        contentStyle: { backgroundColor: '#0A0F1C' },
       }}
     >
       <Stack.Screen name={Routes.Welcome} component={WelcomeScreen} />

@@ -1,23 +1,102 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, type PressableProps } from 'react-native';
-import { radius, spacing } from '../../theme';
-import { useTheme } from '../../theme/useTheme';
+import {
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  ViewStyle,
+  TextStyle,
+} from 'react-native';
 import { AppText } from './AppText';
 
-type Variant = 'primary' | 'secondary' | 'ghost';
+export type ButtonVariant = 'primary' | 'secondary' | 'tertiary' | 'inverted' | 'outlined';
 
-export function AppButton({ title, variant = 'primary', loading, style, ...props }: PressableProps & { title: string; variant?: Variant; loading?: boolean }): React.JSX.Element {
-  const { colors } = useTheme();
-  const background = variant === 'primary' ? colors.primary : variant === 'secondary' ? colors.secondary : 'transparent';
-  const textColor = variant === 'ghost' ? colors.primary : '#fff';
+interface Props {
+  title: string;
+  onPress: () => void;
+  variant?: ButtonVariant;
+  disabled?: boolean;
+  loading?: boolean;
+  style?: ViewStyle;
+  textStyle?: TextStyle;
+}
+
+export function AppButton({
+  title,
+  onPress,
+  variant = 'primary',
+  disabled = false,
+  loading = false,
+  style,
+  textStyle,
+}: Props) {
+  const textColor: Record<ButtonVariant, string> = {
+    primary: '#0A0F1C',
+    secondary: '#FFFFFF',
+    tertiary: '#FFFFFF',
+    inverted: '#0A0F1C',
+    outlined: '#FFFFFF',
+  };
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      {...props}
-      style={[{ minHeight: 44, borderRadius: radius.button, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center', backgroundColor: background }, style]}
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      disabled={disabled || loading}
+      style={[
+        styles.button,
+        styles[variant],
+        (disabled || loading) && styles.disabled,
+        style,
+      ]}
     >
-      {loading ? <ActivityIndicator color={textColor} /> : <AppText style={{ color: textColor, fontWeight: '700' }}>{title}</AppText>}
-    </Pressable>
+      {loading ? (
+        <ActivityIndicator color={textColor[variant]} />
+      ) : (
+        <AppText
+          style={[
+            styles.text,
+            { color: textColor[variant] },
+            textStyle,
+          ]}
+        >
+          {title}
+        </AppText>
+      )}
+    </TouchableOpacity>
   );
 }
+
+const styles = StyleSheet.create({
+  button: {
+    width: '100%',
+    height: 56,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  primary: {
+    backgroundColor: '#00C2FF',
+  },
+  secondary: {
+    backgroundColor: '#1E3A8A',
+  },
+  tertiary: {
+    backgroundColor: '#FF3B3B',
+  },
+  inverted: {
+    backgroundColor: '#FFFFFF',
+  },
+  outlined: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  disabled: {
+    opacity: 0.45,
+  },
+  text: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+});

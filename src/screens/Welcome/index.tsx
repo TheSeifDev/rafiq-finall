@@ -27,7 +27,7 @@ export default function WelcomeScreen({ navigation }: AuthScreenProps<typeof Rou
   }, []);
 
   return (
-    <Screen backgroundColor={isDarkMode ? colors.background : '#191D32'} statusBarStyle="light-content">
+    <Screen style={{ flex: 1, backgroundColor: isDarkMode ? colors.background : '#191D32' }}>
       <View style={styles.container}>
         <Animated.View
           style={[styles.headerSection, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
@@ -37,11 +37,11 @@ export default function WelcomeScreen({ navigation }: AuthScreenProps<typeof Rou
             style={styles.logo}
             resizeMode="contain"
           />
-          <AppText variant="h1" color="#FFFFFF" align="center">
+          <AppText variant="h1" style={{ color: '#FFFFFF', textAlign: 'center' }}>
             مرحباً بك في رفيق
           </AppText>
           <Spacer size="sm" />
-          <AppText variant="body" color="rgba(255,255,255,0.7)" align="center">
+          <AppText variant="body" style={{ color: 'rgba(255,255,255,0.7)', textAlign: 'center' }}>
             رفيقك الصحي الذكي — يراقب، يُنبّه، ويُطمئنك.
           </AppText>
         </Animated.View>
@@ -50,18 +50,15 @@ export default function WelcomeScreen({ navigation }: AuthScreenProps<typeof Rou
           style={[styles.bottomSection, { opacity: fadeAnim }]}
         >
           <AppButton
-            label="تسجيل دخول"
+            title="تسجيل دخول"
             onPress={() => navigation.navigate(Routes.Login)}
             variant="primary"
-            size="lg"
           />
           <Spacer size="md" />
           <AppButton
-            label="إنشاء حساب"
+            title="إنشاء حساب"
             onPress={() => navigation.navigate(Routes.SignUp)}
-            variant="secondary"
-            size="lg"
-            style={{ borderColor: 'rgba(255,255,255,0.3)' }}
+            variant="outlined"
           />
         </Animated.View>
       </View>
@@ -74,7 +71,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing['2xl'],
   },
   headerSection: {
     flex: 1,

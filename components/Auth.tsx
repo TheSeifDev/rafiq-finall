@@ -1,190 +1,223 @@
-import React, { useState } from 'react'
+import React, { useState } from 'react';
 import {
-  Alert,
-  StyleSheet,
   View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  ScrollView
-} from 'react-native'
-import { supabase } from '../lib/supabase'
+  StyleSheet,
+  Image,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+} from 'react-native';
+import { Screen } from '../src/components/ui/Screen';
+import { AppText } from '../src/components/ui/AppText';
+import { AppButton } from '../src/components/ui/AppButton';
+import { AppInput } from '../src/components/ui/AppInput';
+import { SegmentedToggle } from '../src/components/ui/SegmentedToggle';
+import { spacing } from '../src/theme';
+import { supabase } from '../lib/supabase';
+
+type AuthMode = 'login' | 'signup';
+
+const COLORS = {
+  neutral: '#0A0F1C',
+  tertiary: '#FF3B3B',
+};
 
 export default function Auth() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('') 
-  const [loading, setLoading] = useState(false)
+  const [mode, setMode] = useState<AuthMode>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // دالة تسجيل الدخول
   async function signInWithEmail() {
     if (!email || !password) {
-      Alert.alert('تنبيه', 'يرجى إدخال البريد وكلمة المرور');
+      Alert.alert('تنبيه', 'يرجى إدخال البريد الإلكتروني وكلمة المرور');
       return;
     }
-    setLoading(true)
+    setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({
-      email: email,
-      password: password,
-    })
+      email,
+      password,
+    });
 
-    if (error) Alert.alert('خطأ', error.message)
-    setLoading(false)
+    if (error) Alert.alert('خطأ في تسجيل الدخول', error.message);
+    setLoading(false);
   }
 
-  // دالة إنشاء حساب جديد (محدثة لترسل الاسم للـ Trigger)
   async function signUpWithEmail() {
     if (!email || !password || !fullName) {
-      Alert.alert('تنبيه', 'يرجى ملء جميع الخانات بما فيها الاسم');
+      Alert.alert('تنبيه', 'يرجى ملء جميع الخانات بما فيها الاسم الكامل');
       return;
     }
-    setLoading(true)
+    if (password !== confirmPassword) {
+      Alert.alert('تنبيه', 'كلمتا المرور غير متطابقتين');
+      return;
+    }
+    setLoading(true);
     const { data, error } = await supabase.auth.signUp({
-      email: email,
-      password: password,
+      email,
+      password,
       options: {
-        data: {
-          full_name: fullName, // ده اللي هيروح لجدول profiles
-        },
+        data: { full_name: fullName },
       },
-    })
+    });
 
     if (error) {
-      Alert.alert('خطأ في التسجيل', error.message)
-    } else {
-      if (!data.session) {
-        Alert.alert('نجاح', 'يرجى التحقق من بريدك الإلكتروني لتفعيل الحساب');
-      }
+      Alert.alert('خطأ في التسجيل', error.message);
+    } else if (!data.session) {
+      Alert.alert('نجاح', 'يرجى التحقق من بريدك الإلكتروني لتفعيل الحساب');
     }
-    setLoading(false)
+    setLoading(false);
   }
 
+  const isSignUp = mode === 'signup';
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.headerText}>أهلاً بك في رفيق</Text>
-
-      {/* خانة الاسم بالكامل */}
-      <View style={styles.verticallySpaced}>
-        <Text style={styles.label}>الاسم بالكامل</Text>
-        <TextInput
-          onChangeText={setFullName}
-          value={fullName}
-          placeholder="أدخل اسمك الثلاثي"
-          style={styles.input}
-        />
-      </View>
-
-      <View style={styles.verticallySpaced}>
-        <Text style={styles.label}>البريد الإلكتروني</Text>
-        <TextInput
-          onChangeText={setEmail}
-          value={email}
-          placeholder="email@address.com"
-          autoCapitalize="none"
-          keyboardType="email-address"
-          style={styles.input}
-        />
-      </View>
-
-      <View style={styles.verticallySpaced}>
-        <Text style={styles.label}>كلمة المرور</Text>
-        <TextInput
-          onChangeText={setPassword}
-          value={password}
-          secureTextEntry
-          placeholder="Password"
-          autoCapitalize="none"
-          style={styles.input}
-        />
-      </View>
-
-      <View style={[styles.verticallySpaced, styles.mt20]}>
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={signInWithEmail}
-          disabled={loading}
+    <Screen style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
         >
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>تسجيل الدخول</Text>}
-        </TouchableOpacity>
-      </View>
+          {/* Logo */}
+          <View style={styles.logoWrap}>
+            <View style={styles.logoCard}>
+              <Image
+                source={require('../../assets/logo.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
+            <AppText style={styles.brand}>رفيق</AppText>
+          </View>
 
-      <View style={styles.verticallySpaced}>
-        <TouchableOpacity
-          style={[styles.buttonOutline, loading && styles.buttonDisabled]}
-          onPress={signUpWithEmail}
-          disabled={loading}
-        >
-          <Text style={styles.buttonOutlineText}>إنشاء حساب جديد</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
-  )
+          {/* Toggle */}
+          <View style={styles.toggleWrap}>
+            <SegmentedToggle
+              options={[
+                { label: 'تسجيل الدخول', value: 'login' },
+                { label: 'إنشاء حساب', value: 'signup' },
+              ]}
+              activeValue={mode}
+              onChange={(val: string) => setMode(val as AuthMode)}
+            />
+          </View>
+
+          {/* Form */}
+          <View style={styles.form}>
+            {isSignUp && (
+              <AppInput
+                label="الاسم الكامل"
+                placeholder="الاسم الكامل"
+                value={fullName}
+                onChangeText={setFullName}
+                textContentType="name"
+              />
+            )}
+
+            <AppInput
+              label="البريد الإلكتروني"
+              placeholder="example@email.com"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              textContentType="emailAddress"
+            />
+
+            <AppInput
+              label="كلمة المرور"
+              placeholder="••••••••"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              textContentType="password"
+            />
+
+            {isSignUp && (
+              <AppInput
+                label="تأكيد كلمة المرور"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                textContentType="password"
+              />
+            )}
+
+            <AppButton
+              title={isSignUp ? 'إنشاء حساب' : 'تسجيل الدخول'}
+              variant="tertiary"
+              onPress={isSignUp ? signUpWithEmail : signInWithEmail}
+              loading={loading}
+              style={styles.submit}
+            />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Screen>
+  );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
-    flexGrow: 1,
+    flex: 1,
+    backgroundColor: COLORS.neutral,
+    paddingHorizontal: spacing.xl,
+  },
+  flex: {
+    flex: 1,
+  },
+  scroll: {
+    paddingTop: spacing['2xl'],
+    paddingBottom: spacing.xl,
+    gap: spacing.xl,
+  },
+  logoWrap: {
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  logoCard: {
+    width: 100,
+    height: 100,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
     justifyContent: 'center',
-    backgroundColor: '#F8FAFC',
-  },
-  headerText: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#191D32',
-    textAlign: 'center',
-    marginBottom: 30,
-  },
-  verticallySpaced: {
-    paddingVertical: 8,
-    alignSelf: 'stretch',
-  },
-  mt20: {
-    marginTop: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748B',
-    marginBottom: 6,
-    textAlign: 'right',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: '#FFFFFF',
-    textAlign: 'right',
-  },
-  button: {
-    backgroundColor: '#0077C8', // لون رفيق المعتمد
-    borderRadius: 8,
-    padding: 15,
     alignItems: 'center',
   },
-  buttonOutline: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#0077C8',
-    borderRadius: 8,
-    padding: 15,
-    alignItems: 'center',
-    marginTop: 10,
+  logo: {
+    width: 64,
+    height: 64,
   },
-  buttonDisabled: {
-    opacity: 0.5,
+  brand: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
   },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+  toggleWrap: {
+    marginBottom: spacing.sm,
   },
-  buttonOutlineText: {
-    color: '#0077C8',
-    fontSize: 16,
-    fontWeight: 'bold',
+  form: {
+    gap: spacing.md,
   },
-})
+  submit: {
+    marginTop: spacing.lg,
+    height: 58,
+    borderRadius: 16,
+    shadowColor: COLORS.tertiary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+});
