@@ -5,6 +5,7 @@ import { useTheme } from '../../store/ThemeContext';
 import { useAuth } from '../../store/AuthContext';
 import { patientService } from '../../services/patient.service';
 import { spacing } from '../../theme';
+import { toFiniteNumberOrNull } from '../../utils/number';
 
 export default function AddPatientScreen() {
   const { colors } = useTheme();
@@ -37,13 +38,19 @@ export default function AddPatientScreen() {
       return;
     }
 
+    const parsedAge = toFiniteNumberOrNull(age);
+    if (parsedAge === null || !Number.isInteger(parsedAge) || parsedAge <= 0) {
+      setError('Please enter a valid positive whole-number age');
+      return;
+    }
+
     setLoading(true);
     try {
       console.log("2. إرسال البيانات للـ Backend...");
       const result = await patientService.createPatient({
         user_id: user.id,
         full_name: fullName.trim(),
-        age: parseInt(age, 10),
+        age: parsedAge,
         gender,
         blood_type: bloodType.trim(),
       });
