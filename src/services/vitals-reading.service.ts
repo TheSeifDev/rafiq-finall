@@ -1,5 +1,19 @@
 import { supabase } from './supabase';
 import type { VitalsReading, VitalsReadingInsert } from '../types/database';
+import { toFiniteNumberOrNull } from '../utils/number';
+
+function normalizeVitalsReading(reading: unknown): VitalsReading {
+  const row = (reading ?? {}) as Partial<VitalsReading> & Record<string, unknown>;
+  return {
+    ...(row as VitalsReading),
+    heart_rate: toFiniteNumberOrNull(row.heart_rate),
+    oxygen_level: toFiniteNumberOrNull(row.oxygen_level),
+    blood_pressure_systolic: toFiniteNumberOrNull(row.blood_pressure_systolic),
+    blood_pressure_diastolic: toFiniteNumberOrNull(row.blood_pressure_diastolic),
+    temperature: toFiniteNumberOrNull(row.temperature),
+    steps: toFiniteNumberOrNull(row.steps),
+  };
+}
 
 export const vitalsReadingService = {
   /**
@@ -13,7 +27,7 @@ export const vitalsReadingService = {
       .order('recorded_at', { ascending: false });
 
     if (error) throw new Error(error.message);
-    return (data as VitalsReading[]) ?? [];
+    return (data ?? []).map(normalizeVitalsReading);
   },
 
   /**
@@ -29,7 +43,7 @@ export const vitalsReadingService = {
       .single();
 
     if (error || !data) return null;
-    return data as VitalsReading;
+    return normalizeVitalsReading(data);
   },
 
   /**
@@ -45,7 +59,7 @@ export const vitalsReadingService = {
       .single();
 
     return {
-      data: error ? null : (data as VitalsReading),
+      data: error || !data ? null : normalizeVitalsReading(data),
       error: error?.message ?? null,
     };
   },
@@ -68,7 +82,7 @@ export const vitalsReadingService = {
           table: 'vitals_readings',
           filter: `patient_id=eq.${patientId}`,
         },
-        (payload) => callback(payload.new as VitalsReading)
+        (payload) => callback(normalizeVitalsReading(payload.new))
       )
       .subscribe();
   },

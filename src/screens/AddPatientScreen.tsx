@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
+import { toFiniteNumberOrNull } from '../utils/number';
 
 interface AddPatientProps {
   onSuccess: () => void; 
@@ -37,13 +38,19 @@ const AddPatientScreen = ({ onSuccess }: AddPatientProps) => {
       return;
     }
 
+    const parsedAge = toFiniteNumberOrNull(age);
+    if (parsedAge === null || !Number.isInteger(parsedAge) || parsedAge <= 0) {
+      Alert.alert('Invalid age', 'Please enter a valid positive whole-number age.');
+      return;
+    }
+
     setLoading(true);
     try {
       const { error } = await supabase
         .from('patients')
         .insert([{
           name: name,
-          age: parseInt(age),
+          age: parsedAge,
           gender: gender,
           blood_type: bloodType,
           user_id: userId,
