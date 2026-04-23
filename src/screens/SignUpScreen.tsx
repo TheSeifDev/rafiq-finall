@@ -25,6 +25,19 @@ import type { AuthStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'SignUp'>;
 
+// ── Layout helpers — declared OUTSIDE component to keep stable references ──
+function Row({ children, isNarrow }: { children: React.ReactNode; isNarrow: boolean }) {
+  return (
+    <View style={[styles.row, isNarrow && styles.rowColumn]}>
+      {children}
+    </View>
+  );
+}
+
+function Col({ children }: { children: React.ReactNode }) {
+  return <View style={styles.col}>{children}</View>;
+}
+
 export function SignUpScreen({ navigation }: Props): React.JSX.Element {
   const { width, height } = useWindowDimensions();
   const isSmallDevice = height < 700;
@@ -55,73 +68,85 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
 
   const handleSignUp = useCallback(async () => {
     if (!name || !phone || !email || !password || !location || !birthDate) {
-      Alert.alert('تنبيه', 'يرجى ملء جميع الخانات');
+      Alert.alert(
+        language === 'ar' ? 'تنبيه' : 'Notice',
+        language === 'ar' ? 'يرجى ملء جميع الخانات' : 'Please fill in all fields',
+      );
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert('تنبيه', 'كلمتا المرور غير متطابقتين');
+      Alert.alert(
+        language === 'ar' ? 'تنبيه' : 'Notice',
+        language === 'ar' ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match',
+      );
       return;
     }
 
     setLoading(true);
 
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // Step 1: Create auth user with profile metadata
+      const { error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name: name },
+          data: {
+            full_name: name,
+            phone,
+            location,
+            birth_date: birthDate,
+          },
         },
       });
 
       if (authError) {
-        Alert.alert('خطأ في التسجيل', authError.message);
+        Alert.alert(
+          language === 'ar' ? 'خطأ في التسجيل' : 'Sign Up Error',
+          authError.message,
+        );
         setLoading(false);
         return;
       }
 
-      if (!authData.user) {
-        Alert.alert('خطأ', 'لم يتم إنشاء المستخدم');
-        setLoading(false);
-        return;
-      }
-
-      const { error: patientError } = await supabase
-        .from('patients')
-        .insert({
-          user_id: authData.user.id,
-          full_name: name,
-          phone,
-          location,
-          birth_date: birthDate,
-        });
-
-      if (patientError) {
-        Alert.alert('خطأ في حفظ البيانات', patientError.message);
-        setLoading(false);
-        return;
-      }
-
-      Alert.alert('نجاح', 'تم إنشاء الحساب بنجاح! يرجى التحقق من بريدك الإلكتروني.');
-
+      // Step 2: Success — tell user to verify email, patient row created on first login
+      Alert.alert(
+        language === 'ar' ? 'تم إنشاء الحساب ✓' : 'Account Created ✓',
+        language === 'ar'
+          ? 'تم إنشاء الحساب بنجاح.\n\nيرجى التحقق من بريدك الإلكتروني لتأكيد الحساب قبل تسجيل الدخول.'
+          : 'Account created successfully.\n\nPlease check your email to verify your account before logging in.',
+        [
+          {
+            text: language === 'ar' ? 'تسجيل الدخول' : 'Go to Login',
+            onPress: () => navigation.replace('Login'),
+          },
+        ],
+      );
     } catch (err: any) {
-      Alert.alert('خطأ غير متوقع', err.message);
+      Alert.alert(
+        language === 'ar' ? 'خطأ غير متوقع' : 'Unexpected Error',
+        err.message,
+      );
     } finally {
       setLoading(false);
     }
-  }, [name, phone, email, password, confirmPassword, location, birthDate]);
+  }, [name, phone, email, password, confirmPassword, location, birthDate, language, navigation]);
 
-  const Row = ({ children }: { children: React.ReactNode }) => (
-    <View style={[styles.row, isNarrow && styles.rowColumn]}>
-      {children}
-    </View>
-  );
+  // Memoize inline text-processing callbacks to avoid new refs each render
+  const onChangePhone = useCallback((text: string) => {
+    const cleaned = text.replace(/[^0-9]/g, '').slice(0, 11);
+    setPhone(cleaned);
+  }, []);
 
-  const Col = ({ children }: { children: React.ReactNode }) => (
-    <View style={styles.col}>
-      {children}
-    </View>
-  );
+  const onChangeBirthDate = useCallback((text: string) => {
+    let cleaned = text.replace(/[^0-9]/g, '');
+    if (cleaned.length >= 4) {
+      cleaned = cleaned.slice(0, 4) + '-' + cleaned.slice(4);
+    }
+    if (cleaned.length >= 7) {
+      cleaned = cleaned.slice(0, 7) + '-' + cleaned.slice(7, 10);
+    }
+    setBirthDate(cleaned);
+  }, []);
 
   return (
     <Screen style={styles.container}>
@@ -179,16 +204,13 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
             />
 
             {/* Row: Phone + Email */}
-            <Row>
+            <Row isNarrow={isNarrow}>
               <Col>
                 <AppInput
                   label={t.phone}
                   placeholder="01xxxxxxxx"
                   value={phone}
-                  onChangeText={(text) => {
-                    const cleaned = text.replace(/[^0-9]/g, '').slice(0, 11);
-                    setPhone(cleaned);
-                  }}
+                  onChangeText={onChangePhone}
                   keyboardType="phone-pad"
                   textContentType="telephoneNumber"
                   autoComplete="tel"
@@ -209,7 +231,7 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
             </Row>
 
             {/* Row: Location + Birth Date */}
-            <Row>
+            <Row isNarrow={isNarrow}>
               <Col>
                 <AppInput
                   label={t.location}
@@ -224,16 +246,7 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
                   label={t.birthDate}
                   placeholder="YYYY-MM-DD"
                   value={birthDate}
-                  onChangeText={(text) => {
-                    let cleaned = text.replace(/[^0-9]/g, '');
-                    if (cleaned.length >= 4) {
-                      cleaned = cleaned.slice(0, 4) + '-' + cleaned.slice(4);
-                    }
-                    if (cleaned.length >= 7) {
-                      cleaned = cleaned.slice(0, 7) + '-' + cleaned.slice(7, 10);
-                    }
-                    setBirthDate(cleaned);
-                  }}
+                  onChangeText={onChangeBirthDate}
                   keyboardType="numeric"
                   icon={<Ionicons name="calendar-outline" size={20} color={colors.textSecondary} />}
                 />
@@ -241,7 +254,7 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
             </Row>
 
             {/* Row: Password + Confirm */}
-            <Row>
+            <Row isNarrow={isNarrow}>
               <Col>
                 <AppInput
                   label={t.password}
@@ -270,10 +283,14 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
             </Row>
 
             <AppButton
-              title={t.signup}
+              title={loading
+                ? (language === 'ar' ? 'جاري التسجيل...' : 'Creating account...')
+                : t.signup
+              }
               variant="tertiary"
               onPress={handleSignUp}
               loading={loading}
+              disabled={loading}
               style={[
                 styles.submit,
                 isSmallDevice ? { height: 52, marginTop: spacing.md } : undefined,

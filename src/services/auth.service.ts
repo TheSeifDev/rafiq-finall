@@ -38,4 +38,15 @@ export const authService = {
       unsubscribe: () => subscription.unsubscribe(),
     };
   },
+  /**
+   * Resend the verification email for an unconfirmed user.
+   * Uses `resend` API (Supabase v2+). Falls back to signUp re-trigger.
+   */
+  async resendVerification(email: string): Promise<void> {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    });
+    if (error) throw new Error(error.message);
+  },
 };
