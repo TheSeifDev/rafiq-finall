@@ -15,6 +15,8 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 import { MedicationsScreen } from '../screens/MedicationsScreen';
 import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { BottomTabBar } from '../components/ui/BottomTabBar';
+import { LoadingOverlay } from '../components/ui/LoadingOverlay';
+import { Screen } from '../components/ui/Screen';
 import type { AuthStackParamList, MainTabParamList, ProfileStackParamList } from './types';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -54,7 +56,11 @@ export function RootNavigator(): React.JSX.Element {
   const loading = useAuthStore((state) => state.loading);
 
   if (loading) {
-    return <WelcomeScreen />;
+    return (
+      <Screen>
+        <LoadingOverlay text="جاري التحميل..." />
+      </Screen>
+    );
   }
 
   return session ? (

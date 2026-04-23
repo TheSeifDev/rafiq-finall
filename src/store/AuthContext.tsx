@@ -68,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const initialize = async () => {
       try {
-        const { session } = await authService.getSession();
+        const session = await authService.getSession();
         const user = session?.user ?? null;
 
         if (isMounted) {
@@ -105,13 +105,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const result = await authService.signIn({ email, password });
-    return { error: result.error };
+    try {
+      await authService.signIn(email, password);
+      return { error: null };
+    } catch (error: unknown) {
+      return { error: error instanceof Error ? error.message : 'تعذر تسجيل الدخول' };
+    }
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    const result = await authService.signUp({ email, password, fullName });
-    return { error: result.error, needsVerification: result.needsVerification };
+    try {
+      void fullName;
+      await authService.signUp(email, password);
+      return { error: null, needsVerification: true };
+    } catch (error: unknown) {
+      return { error: error instanceof Error ? error.message : 'تعذر إنشاء الحساب', needsVerification: false };
+    }
   };
 
   const signOut = async () => {

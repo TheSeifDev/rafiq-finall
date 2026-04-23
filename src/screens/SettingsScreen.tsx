@@ -36,8 +36,8 @@ export function SettingsScreen(): React.JSX.Element {
           <AppText variant="h2">تفضيلات التطبيق</AppText>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><AppText>الوضع الداكن</AppText><Switch value={darkMode} onValueChange={setDarkMode} /></View>
           <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
-            <AppButton title="العربية" variant={language === 'ar' ? 'primary' : 'ghost'} onPress={() => setLanguage('ar')} />
-            <AppButton title="English" variant={language === 'en' ? 'primary' : 'ghost'} onPress={() => setLanguage('en')} />
+            <AppButton title="العربية" variant={language === 'ar' ? 'primary' : 'outlined'} onPress={() => setLanguage('ar')} />
+            <AppButton title="English" variant={language === 'en' ? 'primary' : 'outlined'} onPress={() => setLanguage('en')} />
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.sm }}><AppText>تذكير الأدوية</AppText><Switch value={notificationPrefs.medicationReminders} onValueChange={(value) => setNotificationPrefs({ medicationReminders: value })} /></View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.sm }}><AppText>تنبيهات المؤشرات</AppText><Switch value={notificationPrefs.vitalsAlerts} onValueChange={(value) => setNotificationPrefs({ vitalsAlerts: value })} /></View>

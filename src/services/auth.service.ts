@@ -28,4 +28,14 @@ export const authService = {
     const { data } = await supabase.auth.getSession();
     return data.session;
   },
+  onAuthStateChange(
+    callback: Parameters<typeof supabase.auth.onAuthStateChange>[0]
+  ): { unsubscribe: () => void } {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(callback);
+    return {
+      unsubscribe: () => subscription.unsubscribe(),
+    };
+  },
 };

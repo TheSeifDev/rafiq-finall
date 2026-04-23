@@ -31,11 +31,11 @@ A rebuilt Arabic-first (RTL) healthcare companion with Supabase-backed real data
 ## Environment variables
 - `EXPO_PUBLIC_SUPABASE_URL`
 - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
-- `EXPO_PUBLIC_OPENAI_API_KEY`
+- `EXPO_PUBLIC_AI_PROXY_URL`
 
 ## Database migration
 Run `supabase/migrations/20260420_init.sql` in your Supabase SQL editor.
 
 ## Notes
 - BLE historical sync is scaffolded and can be extended per vendor APIs.
-- For production AI, move OpenAI calls from client to a secure backend/edge function.
+- AI requests are expected to go through a secure backend/edge proxy endpoint.

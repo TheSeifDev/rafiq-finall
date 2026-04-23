@@ -1,32 +1,10 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { useAuth } from '../store/AuthContext';
-import { AuthNavigator } from './AuthNavigator';
-import { MainNavigator } from './MainNavigator';
-import { LoadingOverlay } from '../components/ui';
-import { Screen } from '../components/ui';
-import AddPatientScreen from '../screens/AddPatient';
+import { RootNavigator } from './RootNavigator';
 
+/**
+ * @deprecated Keep only as a compatibility wrapper.
+ * Canonical navigation now lives in RootNavigator and is mounted once in App.tsx.
+ */
 export function AppNavigator() {
-  const { isLoading, isAuthenticated, hasPatient } = useAuth();
-
-  if (isLoading) {
-    return (
-      <Screen>
-        <LoadingOverlay label="جاري التحميل..." />
-      </Screen>
-    );
-  }
-
-  return (
-    <NavigationContainer>
-      {!isAuthenticated ? (
-        <AuthNavigator />
-      ) : !hasPatient ? (
-        <AddPatientScreen />
-      ) : (
-        <MainNavigator />
-      )}
-    </NavigationContainer>
-  );
+  return <RootNavigator />;
 }

@@ -14,7 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 
 export function HomeScreen(): React.JSX.Element {
   const session = useAuthStore((s) => s.session);
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [latestVitals, setLatestVitals] = useState<VitalsRecord | null>(null);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -49,8 +49,8 @@ export function HomeScreen(): React.JSX.Element {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
           <AppButton title="الطوارئ" onPress={() => navigation.navigate('Emergency' as never)} style={{ flexBasis: '48%' }} />
           <AppButton title="الأدوية" variant="secondary" onPress={() => navigation.navigate('Profile' as never, { screen: 'Medications' } as never)} style={{ flexBasis: '48%' }} />
-          <AppButton title="المحادثة" variant="ghost" onPress={() => navigation.navigate('Chat' as never)} style={{ flexBasis: '48%' }} />
-          <AppButton title="المؤشرات" variant="ghost" onPress={() => navigation.navigate('Vitals' as never)} style={{ flexBasis: '48%' }} />
+          <AppButton title="المحادثة" variant="outlined" onPress={() => navigation.navigate('Chat' as never)} style={{ flexBasis: '48%' }} />
+          <AppButton title="المؤشرات" variant="outlined" onPress={() => navigation.navigate('Vitals' as never)} style={{ flexBasis: '48%' }} />
         </View>
 
         <AppCard>

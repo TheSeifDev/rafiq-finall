@@ -10,7 +10,7 @@ import { patientService, type PatientProfile } from '../services/patient.service
 
 export function ProfileScreen(): React.JSX.Element {
   const session = useAuthStore((state) => state.session);
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [profile, setProfile] = useState<PatientProfile | null>(null);
 
   useEffect(() => {

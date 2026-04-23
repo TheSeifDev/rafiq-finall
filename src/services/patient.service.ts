@@ -24,4 +24,12 @@ export const patientService = {
     const { error } = await supabase.from('patients').insert(payload);
     if (error) throw new Error(error.message);
   },
+  async hasPatient(userId: string): Promise<boolean> {
+    const profile = await this.getProfile(userId);
+    return Boolean(profile);
+  },
+  async getPatientId(userId: string): Promise<string | null> {
+    const profile = await this.getProfile(userId);
+    return profile?.id ?? null;
+  },
 };

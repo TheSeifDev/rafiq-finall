@@ -1,11 +1,9 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { useTheme } from '../../store/ThemeContext';
 import { spacing } from '../../theme';
 
 export function Divider() {
-  const { colors } = useTheme();
-  return <View style={[styles.divider, { backgroundColor: colors.border }]} />;
+  return <View style={styles.divider} />;
 }
 
 const styles = StyleSheet.create({
@@ -13,5 +11,6 @@ const styles = StyleSheet.create({
     height: 1,
     width: '100%',
     marginVertical: spacing.md,
+    backgroundColor: 'rgba(148, 163, 184, 0.28)',
   },
 });
