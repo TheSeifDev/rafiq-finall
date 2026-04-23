@@ -7,7 +7,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../src/components/ui/Screen';
 import { AppText } from '../src/components/ui/AppText';
 import { AppButton } from '../src/components/ui/AppButton';
@@ -24,11 +26,17 @@ const COLORS = {
 };
 
 export default function Auth() {
+  const { height } = useWindowDimensions();
+  const isSmallDevice = height < 700;
+
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [location, setLocation] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function signInWithEmail() {
@@ -47,32 +55,67 @@ export default function Auth() {
   }
 
   async function signUpWithEmail() {
-    if (!email || !password || !fullName) {
-      Alert.alert('تنبيه', 'يرجى ملء جميع الخانات بما فيها الاسم الكامل');
+    if (!email || !password || !fullName || !phone || !location || !birthDate) {
+      Alert.alert('تنبيه', 'يرجى ملء جميع الخانات بما فيها الاسم الكامل والموقع وتاريخ الميلاد');
       return;
     }
     if (password !== confirmPassword) {
       Alert.alert('تنبيه', 'كلمتا المرور غير متطابقتين');
       return;
     }
+    
     setLoading(true);
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName },
-      },
-    });
+    
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName },
+        },
+      });
 
-    if (error) {
-      Alert.alert('خطأ في التسجيل', error.message);
-    } else if (!data.session) {
-      Alert.alert('نجاح', 'يرجى التحقق من بريدك الإلكتروني لتفعيل الحساب');
+      if (error) {
+        Alert.alert('خطأ في التسجيل', error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (data.user) {
+        const { error: patientError } = await supabase
+          .from('patients')
+          .insert({
+            user_id: data.user.id,
+            full_name: fullName,
+            phone,
+            location,
+            birth_date: birthDate,
+          });
+          
+        if (patientError) {
+          Alert.alert('خطأ في حفظ البيانات', patientError.message);
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (!data.session) {
+        Alert.alert('نجاح', 'تم إنشاء الحساب! يرجى التحقق من بريدك الإلكتروني لتفعيل الحساب');
+      }
+    } catch (err: any) {
+      Alert.alert('خطأ غير متوقع', err.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   const isSignUp = mode === 'signup';
+
+  const responsiveSpacing = {
+    top: isSmallDevice ? spacing.lg : spacing['2xl'],
+    gap: isSmallDevice ? spacing.md : spacing.xl,
+    formGap: isSmallDevice ? spacing.sm : spacing.md,
+  };
 
   return (
     <Screen style={styles.container}>
@@ -82,14 +125,20 @@ export default function Auth() {
       >
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[
+            styles.scroll,
+            {
+              paddingTop: responsiveSpacing.top,
+              gap: responsiveSpacing.gap,
+            },
+          ]}
           keyboardShouldPersistTaps="handled"
         >
           {/* Logo */}
           <View style={styles.logoWrap}>
             <View style={styles.logoCard}>
               <Image
-                source={require('../../assets/logo.png')}
+                source={require('../assets/logo.png')}
                 style={styles.logo}
                 resizeMode="contain"
               />
@@ -110,15 +159,28 @@ export default function Auth() {
           </View>
 
           {/* Form */}
-          <View style={styles.form}>
+          <View style={[styles.form, { gap: responsiveSpacing.formGap }]}>
             {isSignUp && (
-              <AppInput
-                label="الاسم الكامل"
-                placeholder="الاسم الكامل"
-                value={fullName}
-                onChangeText={setFullName}
-                textContentType="name"
-              />
+              <>
+                <AppInput
+                  label="الاسم الكامل"
+                  placeholder="الاسم الكامل"
+                  value={fullName}
+                  onChangeText={setFullName}
+                  textContentType="name"
+                />
+                <AppInput
+                  label="رقم الجوال"
+                  placeholder="01xxxxxxxx"
+                  value={phone}
+                  onChangeText={(text) => {
+                    const cleaned = text.replace(/[^0-9]/g, '').slice(0, 11);
+                    setPhone(cleaned);
+                  }}
+                  keyboardType="phone-pad"
+                  textContentType="telephoneNumber"
+                />
+              </>
             )}
 
             <AppInput
@@ -130,6 +192,31 @@ export default function Auth() {
               autoCapitalize="none"
               textContentType="emailAddress"
             />
+
+            {isSignUp && (
+              <>
+                <AppInput
+                  label="الموقع"
+                  placeholder="القاهرة، مصر"
+                  value={location}
+                  onChangeText={setLocation}
+                  icon={<Ionicons name="location-outline" size={20} color="rgba(255,255,255,0.5)" />}
+                />
+                <AppInput
+                  label="تاريخ الميلاد"
+                  placeholder="YYYY-MM-DD"
+                  value={birthDate}
+                  onChangeText={(text) => {
+                    let cleaned = text.replace(/[^0-9]/g, '');
+                    if (cleaned.length >= 4) cleaned = cleaned.slice(0, 4) + '-' + cleaned.slice(4);
+                    if (cleaned.length >= 7) cleaned = cleaned.slice(0, 7) + '-' + cleaned.slice(7, 10);
+                    setBirthDate(cleaned);
+                  }}
+                  keyboardType="numeric"
+                  icon={<Ionicons name="calendar-outline" size={20} color="rgba(255,255,255,0.5)" />}
+                />
+              </>
+            )}
 
             <AppInput
               label="كلمة المرور"
@@ -156,7 +243,10 @@ export default function Auth() {
               variant="tertiary"
               onPress={isSignUp ? signUpWithEmail : signInWithEmail}
               loading={loading}
-              style={styles.submit}
+              style={[
+                styles.submit,
+                isSmallDevice ? { height: 52, marginTop: spacing.md } : undefined,
+              ]}
             />
           </View>
         </ScrollView>
@@ -175,9 +265,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scroll: {
-    paddingTop: spacing['2xl'],
     paddingBottom: spacing.xl,
-    gap: spacing.xl,
   },
   logoWrap: {
     alignItems: 'center',
@@ -208,7 +296,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   form: {
-    gap: spacing.md,
+    width: '100%',
   },
   submit: {
     marginTop: spacing.lg,

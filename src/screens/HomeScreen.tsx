@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { AppText } from '../components/ui/AppText';
 import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
@@ -10,11 +11,12 @@ import { patientService } from '../services/patient.service';
 import { vitalsService, type VitalsRecord } from '../services/vitals.service';
 import { medicationService, type Medication } from '../services/medication.service';
 import { notificationService, type AppNotification } from '../services/notification.service';
-import { useNavigation } from '@react-navigation/native';
+import type { MainTabParamList } from '../navigation/types';
 
-export function HomeScreen(): React.JSX.Element {
+type Props = BottomTabScreenProps<MainTabParamList, 'Home'>;
+
+export function HomeScreen({ navigation }: Props): React.JSX.Element {
   const session = useAuthStore((s) => s.session);
-  const navigation = useNavigation<any>();
   const [latestVitals, setLatestVitals] = useState<VitalsRecord | null>(null);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -47,10 +49,10 @@ export function HomeScreen(): React.JSX.Element {
         </AppCard>
 
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
-          <AppButton title="الطوارئ" onPress={() => navigation.navigate('Emergency' as never)} style={{ flexBasis: '48%' }} />
-          <AppButton title="الأدوية" variant="secondary" onPress={() => navigation.navigate('Profile' as never, { screen: 'Medications' } as never)} style={{ flexBasis: '48%' }} />
-          <AppButton title="المحادثة" variant="outlined" onPress={() => navigation.navigate('Chat' as never)} style={{ flexBasis: '48%' }} />
-          <AppButton title="المؤشرات" variant="outlined" onPress={() => navigation.navigate('Vitals' as never)} style={{ flexBasis: '48%' }} />
+          <AppButton title="الطوارئ" onPress={() => navigation.navigate('Emergency')} style={{ flexBasis: '48%' }} />
+          <AppButton title="الأدوية" variant="secondary" onPress={() => navigation.navigate('Profile', { screen: 'Medications' })} style={{ flexBasis: '48%' }} />
+          <AppButton title="المحادثة" variant="outlined" onPress={() => navigation.navigate('Chat')} style={{ flexBasis: '48%' }} />
+          <AppButton title="المؤشرات" variant="outlined" onPress={() => navigation.navigate('Vitals')} style={{ flexBasis: '48%' }} />
         </View>
 
         <AppCard>

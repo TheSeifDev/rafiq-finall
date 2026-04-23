@@ -1,121 +1,61 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { BackHandler } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useTheme } from '../store/ThemeContext';
-import { Routes } from './routes';
-import { spacing, radius, shadows, typography } from '../theme';
-import type {
-  MainTabParamList,
-  HomeStackParamList,
-  VitalsStackParamList,
-  ProfileStackParamList,
-} from '../types/navigation';
+import { HomeScreen } from '../screens/HomeScreen';
+import { VitalsScreen } from '../screens/VitalsScreen';
+import { EmergencyScreen } from '../screens/EmergencyScreen';
+import { ChatScreen } from '../screens/ChatScreen';
+import { ProfileScreen } from '../screens/ProfileScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
+import { MedicationsScreen } from '../screens/MedicationsScreen';
+import { EditProfileScreen } from '../screens/EditProfileScreen';
+import { BottomTabBar } from '../components/ui/BottomTabBar';
+import type { MainTabParamList, ProfileStackParamList } from './types';
 
-// Screens
-import HomeScreen from '../screens/Home';
-import NotificationsScreen from '../screens/Notifications';
-import AddPatientScreen from '../screens/AddPatient';
-import MedicationScreen from '../screens/Medication';
-import VitalsScreen from '../screens/Vitals';
-import EmergencyScreen from '../screens/Emergency';
-import ChatScreen from '../screens/Chat';
-import ProfileScreen from '../screens/Profile';
-import SettingsScreen from '../screens/Settings';
-import GeneralSettingsScreen from '../screens/GeneralSettings';
-
-// ---------- Nested Stacks ----------
-
-const HomeStack = createNativeStackNavigator<HomeStackParamList>();
-function HomeStackNavigator() {
-  return (
-    <HomeStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_left' }}>
-      <HomeStack.Screen name={Routes.Home} component={HomeScreen} />
-      <HomeStack.Screen name={Routes.Notifications} component={NotificationsScreen} />
-      <HomeStack.Screen name={Routes.AddPatient} component={AddPatientScreen} />
-      <HomeStack.Screen name={Routes.Medication} component={MedicationScreen} />
-    </HomeStack.Navigator>
-  );
-}
-
-const VitalsStack = createNativeStackNavigator<VitalsStackParamList>();
-function VitalsStackNavigator() {
-  return (
-    <VitalsStack.Navigator screenOptions={{ headerShown: false }}>
-      <VitalsStack.Screen name={Routes.Vitals} component={VitalsScreen} />
-    </VitalsStack.Navigator>
-  );
-}
-
-const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
-function ProfileStackNavigator() {
-  return (
-    <ProfileStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_left' }}>
-      <ProfileStack.Screen name={Routes.Profile} component={ProfileScreen} />
-      <ProfileStack.Screen name={Routes.Settings} component={SettingsScreen} />
-      <ProfileStack.Screen name={Routes.GeneralSettings} component={GeneralSettingsScreen} />
-    </ProfileStack.Navigator>
-  );
-}
-
-// ---------- Tab Navigator ----------
 const Tab = createBottomTabNavigator<MainTabParamList>();
+const ProfileStackNav = createNativeStackNavigator<ProfileStackParamList>();
 
-const TAB_CONFIG: {
-  name: keyof MainTabParamList;
-  component: React.ComponentType<any>;
-  label: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  iconFocused: keyof typeof MaterialCommunityIcons.glyphMap;
-}[] = [
-  { name: Routes.ProfileTab, component: ProfileStackNavigator, label: 'الحساب', icon: 'account-outline', iconFocused: 'account' },
-  { name: Routes.ChatTab, component: ChatScreen, label: 'المحادثة', icon: 'chat-outline', iconFocused: 'chat' },
-  { name: Routes.EmergencyTab, component: EmergencyScreen, label: 'الطوارئ', icon: 'hospital-box-outline', iconFocused: 'hospital-box' },
-  { name: Routes.VitalsTab, component: VitalsStackNavigator, label: 'المؤشرات', icon: 'heart-pulse', iconFocused: 'heart-pulse' },
-  { name: Routes.HomeTab, component: HomeStackNavigator, label: 'الرئيسية', icon: 'home-outline', iconFocused: 'home' },
-];
+function ProfileStackNavigator(): React.JSX.Element {
+  return (
+    <ProfileStackNav.Navigator screenOptions={{ headerShown: false }}>
+      <ProfileStackNav.Screen
+        name="ProfileMain"
+        component={ProfileScreen}
+        options={{ title: 'الملف الشخصي' }}
+      />
+      <ProfileStackNav.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{ animation: 'slide_from_right', title: 'الإعدادات' }}
+      />
+      <ProfileStackNav.Screen
+        name="Medications"
+        component={MedicationsScreen}
+        options={{ animation: 'slide_from_right', title: 'الأدوية' }}
+      />
+      <ProfileStackNav.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{ animation: 'fade', title: 'تعديل الملف' }}
+      />
+    </ProfileStackNav.Navigator>
+  );
+}
 
-export function MainNavigator() {
-  const { colors, isDarkMode } = useTheme();
+export function MainNavigator(): React.JSX.Element {
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => false);
+    return () => sub.remove();
+  }, []);
 
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: isDarkMode ? colors.surface : colors.background,
-          borderTopWidth: 0,
-          height: 70,
-          paddingBottom: spacing.sm,
-          paddingTop: spacing.xs,
-          ...shadows.sm,
-        },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textSecondary,
-        tabBarLabelStyle: {
-          fontSize: typography.caption.fontSize,
-          fontWeight: '600',
-        },
-      }}
-    >
-      {TAB_CONFIG.map((tab) => (
-        <Tab.Screen
-          key={tab.name}
-          name={tab.name}
-          component={tab.component}
-          options={{
-            tabBarLabel: tab.label,
-            tabBarIcon: ({ focused, color, size }) => (
-              <MaterialCommunityIcons
-                name={focused ? tab.iconFocused : tab.icon}
-                size={size}
-                color={color}
-              />
-            ),
-          }}
-        />
-      ))}
+    <Tab.Navigator tabBar={(props) => <BottomTabBar {...props} />}>
+      <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'الرئيسية', headerShown: false }} />
+      <Tab.Screen name="Vitals" component={VitalsScreen} options={{ title: 'المؤشرات', headerShown: false }} />
+      <Tab.Screen name="Emergency" component={EmergencyScreen} options={{ title: 'الطوارئ', headerShown: false }} />
+      <Tab.Screen name="Chat" component={ChatScreen} options={{ title: 'المحادثة', headerShown: false }} />
+      <Tab.Screen name="Profile" component={ProfileStackNavigator} options={{ title: 'الملف', headerShown: false }} />
     </Tab.Navigator>
   );
 }

@@ -18,6 +18,7 @@ interface Props extends Omit<TextInputProps, 'style'> {
   onToggleSecure?: () => void;
   containerStyle?: ViewStyle;
   inputStyle?: TextStyle;
+  icon?: React.ReactNode;
 }
 
 export function AppInput({
@@ -33,6 +34,7 @@ export function AppInput({
   onToggleSecure,
   containerStyle,
   inputStyle,
+  icon,
   ...rest
 }: Props) {
   const [focused, setFocused] = useState(false);
@@ -41,8 +43,14 @@ export function AppInput({
     <View style={[styles.wrapper, containerStyle]}>
       {label && <AppText style={styles.label}>{label}</AppText>}
       <View style={[styles.field, focused && styles.fieldFocused]}>
+        {icon && !isPassword && <View style={styles.leftIcon}>{icon}</View>}
+        
         <TextInput
-          style={[styles.input, inputStyle]}
+          style={[
+            styles.input,
+            inputStyle,
+            (icon && !isPassword) ? { paddingLeft: 8 } : {}, // ← FIXED: {} بدل undefined
+          ]}
           placeholder={placeholder}
           placeholderTextColor="rgba(255,255,255,0.35)"
           value={value}
@@ -57,6 +65,7 @@ export function AppInput({
           textAlign="right"
           {...rest}
         />
+        
         {isPassword && onToggleSecure && (
           <TouchableOpacity onPress={onToggleSecure} style={styles.icon} activeOpacity={0.7}>
             <AppText style={styles.iconText}>
@@ -101,6 +110,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'right',
     height: '100%',
+  },
+  leftIcon: {
+    marginRight: 8,
   },
   icon: {
     padding: 6,

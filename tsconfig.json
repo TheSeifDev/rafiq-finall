@@ -7,23 +7,26 @@
     "index.ts",
     "App.tsx",
     "src/**/*.ts",
-    "src/components/**/*.tsx",
-    "src/screens/*Screen.tsx",
-    "src/navigation/RootNavigator.tsx",
-    "src/navigation/AppNavigator.tsx",
+    "src/**/*.tsx",
     "components/**/*.ts",
     "components/**/*.tsx",
     "lib/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-    "src/navigation/AuthNavigator.tsx",
-    "src/navigation/MainNavigator.tsx",
-    "src/store/ThemeContext.tsx",
-    "src/hooks/useMedications.ts",
-    "src/hooks/useNotifications.ts",
-    "src/hooks/usePatient.ts",
+    "src/screens/Home",
+    "src/screens/Chat",
+    "src/screens/Emergency",
+    "src/screens/AddPatient",
+    "src/screens/GeneralSettings",
     "src/screens/AddPatientScreen.tsx",
-    "src/screens/GeneralSettingsScreen.tsx"
+    "src/screens/GeneralSettingsScreen.tsx",
+    "src/screens/MedicationScreen.tsx",
+    "src/screens/EmergencyCenter.tsx",
+    "src/screens/NotificationsScreen.tsx",
+    "src/hooks/usePatient.ts",
+    "src/hooks/useNotifications.ts",
+    "src/hooks/useVitals.ts",
+    "src/hooks/useMedications.ts"
   ]
 }

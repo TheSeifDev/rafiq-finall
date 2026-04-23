@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   StyleSheet,
   Image,
   StatusBar,
+  Pressable,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../components/ui/Screen';
@@ -22,6 +23,8 @@ const COLORS = {
 };
 
 export function WelcomeScreen({ navigation }: Props): React.JSX.Element {
+  const [agreed, setAgreed] = useState(false);
+
   return (
     <Screen style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.neutral} />
@@ -53,20 +56,41 @@ export function WelcomeScreen({ navigation }: Props): React.JSX.Element {
             variant="tertiary"
             onPress={() => navigation.navigate('Login')}
             style={styles.mainBtn}
+            disabled={!agreed}
           />
           <AppButton
             title="إنشاء حساب"
             variant="outlined"
             onPress={() => navigation.navigate('SignUp')}
             style={styles.secondBtn}
+            disabled={!agreed}
           />
 
           <View style={styles.footer}>
-            <AppText style={styles.footerText}>
-              بالمتابعة، أنت توافق على{' '}
-              <AppText style={styles.footerLink}>شروط الاستخدام</AppText> و{' '}
-              <AppText style={styles.footerLink}>سياسة الخصوصية</AppText>
-            </AppText>
+            <Pressable
+              style={styles.checkboxRow}
+              onPress={() => setAgreed(!agreed)}
+            >
+              <View style={[styles.checkbox, agreed && styles.checkboxActive]}>
+                {agreed && <View style={styles.checkboxDot} />}
+              </View>
+              <AppText style={styles.checkboxText}>
+                أوافق على{' '}
+                <AppText
+                  style={styles.checkboxLink}
+                  onPress={() => navigation.navigate('TermsOfService')}
+                >
+                  شروط الاستخدام
+                </AppText>{' '}
+                و{' '}
+                <AppText
+                  style={styles.checkboxLink}
+                  onPress={() => navigation.navigate('PrivacyPolicy')}
+                >
+                  سياسة الخصوصية
+                </AppText>
+              </AppText>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -134,6 +158,43 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingBottom: spacing.md,
   },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  checkboxActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary,
+  },
+  checkboxDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 3,
+    backgroundColor: COLORS.white,
+  },
+  checkboxText: {
+    flex: 1,
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.6)',
+    lineHeight: 22,
+  },
+  checkboxLink: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
   mainBtn: {
     height: 58,
     borderRadius: 16,
@@ -154,15 +215,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: spacing.sm,
     paddingHorizontal: spacing.lg,
-  },
-  footerText: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.35)',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  footerLink: {
-    color: COLORS.primary,
-    fontWeight: '700',
   },
 });

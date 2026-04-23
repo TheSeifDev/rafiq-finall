@@ -85,11 +85,14 @@ export interface VitalsReadingInsert {
 export interface Medication {
   id: string;
   patient_id: string;
-  med_name: string;
+  name: string;
   dosage: string;
-  reminder_time: string;
+  frequency: string;
+  time_of_day: string[];
+  start_date: string | null;
+  end_date: string | null;
+  instructions: string | null;
   is_active: boolean;
-  created_at: string;
 }
 
 // ─────────────────────────────────────────
@@ -102,7 +105,7 @@ export interface Notification {
   user_id: string;
   title: string;
   body: string;
-  type: NotificationType;
+  type: NotificationType | null;
   is_read: boolean;
   created_at: string;
 }

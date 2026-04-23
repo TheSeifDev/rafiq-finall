@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   ViewStyle,
   TextStyle,
+  StyleProp, // ← ADDED
 } from 'react-native';
 import { AppText } from './AppText';
 
@@ -16,7 +17,7 @@ interface Props {
   variant?: ButtonVariant;
   disabled?: boolean;
   loading?: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>; // ← FIXED: StyleProp<ViewStyle> بدل ViewStyle
   textStyle?: TextStyle;
 }
 
