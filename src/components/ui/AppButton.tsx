@@ -5,9 +5,10 @@ import {
   ActivityIndicator,
   ViewStyle,
   TextStyle,
-  StyleProp, // ← ADDED
+  StyleProp,
 } from 'react-native';
 import { AppText } from './AppText';
+import { useTheme } from '../../theme/useTheme';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'tertiary' | 'inverted' | 'outlined';
 
@@ -17,7 +18,7 @@ interface Props {
   variant?: ButtonVariant;
   disabled?: boolean;
   loading?: boolean;
-  style?: StyleProp<ViewStyle>; // ← FIXED: StyleProp<ViewStyle> بدل ViewStyle
+  style?: StyleProp<ViewStyle>;
   textStyle?: TextStyle;
 }
 
@@ -30,13 +31,18 @@ export function AppButton({
   style,
   textStyle,
 }: Props) {
+  const { darkMode, colors } = useTheme();
+
   const textColor: Record<ButtonVariant, string> = {
     primary: '#0A0F1C',
     secondary: '#FFFFFF',
     tertiary: '#FFFFFF',
-    inverted: '#0A0F1C',
-    outlined: '#FFFFFF',
+    inverted: colors.textPrimary,
+    outlined: colors.textPrimary,
   };
+
+  const outlinedBorder = darkMode ? 'rgba(255,255,255,0.20)' : 'rgba(0,0,0,0.15)';
+  const invertedBg = darkMode ? '#FFFFFF' : colors.surface;
 
   return (
     <TouchableOpacity
@@ -46,6 +52,8 @@ export function AppButton({
       style={[
         styles.button,
         styles[variant],
+        variant === 'outlined' && { borderColor: outlinedBorder },
+        variant === 'inverted' && { backgroundColor: invertedBg },
         (disabled || loading) && styles.disabled,
         style,
       ]}
@@ -90,7 +98,6 @@ const styles = StyleSheet.create({
   outlined: {
     backgroundColor: 'transparent',
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   disabled: {
     opacity: 0.45,

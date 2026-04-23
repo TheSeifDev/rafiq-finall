@@ -3,36 +3,43 @@ import {
   View,
   StyleSheet,
   Image,
-  StatusBar,
   Pressable,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../components/ui/Screen';
 import { AppText } from '../components/ui/AppText';
 import { AppButton } from '../components/ui/AppButton';
+import { AuthTopControls } from '../components/AuthTopControls';
 import { spacing } from '../theme';
+import { useTheme } from '../theme/useTheme';
+import { useAppStore } from '../store/app.store';
+import { translations } from '../constants/translations';
 import type { AuthStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Welcome'>;
 
-const COLORS = {
-  neutral: '#0A0F1C',
-  primary: '#00C2FF',
-  tertiary: '#FF3B3B',
-  white: '#FFFFFF',
-};
-
 export function WelcomeScreen({ navigation }: Props): React.JSX.Element {
   const [agreed, setAgreed] = useState(false);
+  const { colors, darkMode } = useTheme();
+  const language = useAppStore((s) => s.language);
+  const t = translations[language];
+
+  const mutedText = darkMode ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.40)';
+  const subtleText = darkMode ? 'rgba(255,255,255,0.60)' : 'rgba(0,0,0,0.50)';
+  const subtleBorder = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const subtleSurface = darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)';
+  const checkBorder = darkMode ? 'rgba(255,255,255,0.30)' : 'rgba(0,0,0,0.25)';
+  const outlineBorder = darkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)';
 
   return (
     <Screen style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.neutral} />
-
       <View style={styles.content}>
+        {/* Quick Settings */}
+        <AuthTopControls />
+
         {/* Brand Section */}
         <View style={styles.brandSection}>
-          <View style={styles.logoCard}>
+          <View style={[styles.logoCard, { backgroundColor: subtleSurface, borderColor: subtleBorder }]}>
             <Image
               source={require('../../assets/logo.png')}
               style={styles.logo}
@@ -41,10 +48,12 @@ export function WelcomeScreen({ navigation }: Props): React.JSX.Element {
           </View>
 
           <View style={styles.textBox}>
-            <AppText style={styles.brand}>رفيق</AppText>
-            <View style={styles.accentDivider} />
-            <AppText style={styles.tagline}>
-              مرافقك الصحي الاحترافي
+            <AppText style={[styles.brand, { color: colors.textPrimary }]}>
+              {t.appName}
+            </AppText>
+            <View style={[styles.accentDivider, { backgroundColor: colors.danger }]} />
+            <AppText style={[styles.tagline, { color: mutedText }]}>
+              {t.welcomeSubtitle}
             </AppText>
           </View>
         </View>
@@ -52,17 +61,17 @@ export function WelcomeScreen({ navigation }: Props): React.JSX.Element {
         {/* Actions */}
         <View style={styles.actions}>
           <AppButton
-            title="تسجيل الدخول"
+            title={t.login}
             variant="tertiary"
             onPress={() => navigation.navigate('Login')}
             style={styles.mainBtn}
             disabled={!agreed}
           />
           <AppButton
-            title="إنشاء حساب"
+            title={t.signup}
             variant="outlined"
             onPress={() => navigation.navigate('SignUp')}
-            style={styles.secondBtn}
+            style={[styles.secondBtn, { borderColor: outlineBorder }]}
             disabled={!agreed}
           />
 
@@ -71,23 +80,29 @@ export function WelcomeScreen({ navigation }: Props): React.JSX.Element {
               style={styles.checkboxRow}
               onPress={() => setAgreed(!agreed)}
             >
-              <View style={[styles.checkbox, agreed && styles.checkboxActive]}>
+              <View
+                style={[
+                  styles.checkbox,
+                  { borderColor: checkBorder },
+                  agreed && { borderColor: colors.secondary, backgroundColor: colors.secondary },
+                ]}
+              >
                 {agreed && <View style={styles.checkboxDot} />}
               </View>
-              <AppText style={styles.checkboxText}>
-                أوافق على{' '}
+              <AppText style={[styles.checkboxText, { color: subtleText }]}>
+                {t.agree}{' '}
                 <AppText
-                  style={styles.checkboxLink}
+                  style={[styles.checkboxLink, { color: colors.secondary }]}
                   onPress={() => navigation.navigate('TermsOfService')}
                 >
-                  شروط الاستخدام
+                  {t.termsOfService}
                 </AppText>{' '}
-                و{' '}
+                {t.and}{' '}
                 <AppText
-                  style={styles.checkboxLink}
+                  style={[styles.checkboxLink, { color: colors.secondary }]}
                   onPress={() => navigation.navigate('PrivacyPolicy')}
                 >
-                  سياسة الخصوصية
+                  {t.privacyPolicy}
                 </AppText>
               </AppText>
             </Pressable>
@@ -101,7 +116,6 @@ export function WelcomeScreen({ navigation }: Props): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.neutral,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing['2xl'],
     paddingBottom: spacing.lg,
@@ -120,9 +134,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -137,18 +149,15 @@ const styles = StyleSheet.create({
   brand: {
     fontSize: 36,
     fontWeight: '800',
-    color: COLORS.white,
     letterSpacing: -0.5,
   },
   accentDivider: {
     width: 32,
     height: 4,
     borderRadius: 2,
-    backgroundColor: COLORS.tertiary,
   },
   tagline: {
     fontSize: 15,
-    color: 'rgba(255, 255, 255, 0.45)',
     textAlign: 'center',
     lineHeight: 24,
     fontWeight: '500',
@@ -170,35 +179,27 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 2,
-  },
-  checkboxActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primary,
   },
   checkboxDot: {
     width: 10,
     height: 10,
     borderRadius: 3,
-    backgroundColor: COLORS.white,
+    backgroundColor: '#FFFFFF',
   },
   checkboxText: {
     flex: 1,
     fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.6)',
     lineHeight: 22,
   },
   checkboxLink: {
-    color: COLORS.primary,
     fontWeight: '700',
   },
   mainBtn: {
     height: 58,
     borderRadius: 16,
-    shadowColor: COLORS.tertiary,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,
     shadowRadius: 18,
@@ -208,7 +209,6 @@ const styles = StyleSheet.create({
     height: 58,
     borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
     backgroundColor: 'transparent',
   },
   footer: {

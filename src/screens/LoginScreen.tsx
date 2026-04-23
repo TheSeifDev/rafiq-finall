@@ -14,21 +14,25 @@ import { AppText } from '../components/ui/AppText';
 import { AppButton } from '../components/ui/AppButton';
 import { AppInput } from '../components/ui/AppInput';
 import { SegmentedToggle } from '../components/ui/SegmentedToggle';
+import { AuthTopControls } from '../components/AuthTopControls';
 import { spacing } from '../theme';
+import { useTheme } from '../theme/useTheme';
+import { useAppStore } from '../store/app.store';
+import { translations } from '../constants/translations';
 import type { AuthStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
-
-const COLORS = {
-  neutral: '#0A0F1C',
-  primary: '#00C2FF',
-  tertiary: '#FF3B3B',
-};
 
 export function LoginScreen({ navigation }: Props): React.JSX.Element {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [secure, setSecure] = useState(true);
+  const { colors, darkMode } = useTheme();
+  const language = useAppStore((s) => s.language);
+  const t = translations[language];
+
+  const backBg = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
+  const backBorder = darkMode ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)';
 
   return (
     <Screen style={styles.container}>
@@ -41,23 +45,25 @@ export function LoginScreen({ navigation }: Props): React.JSX.Element {
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Back to Welcome */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Welcome')}
-            style={styles.back}
-            activeOpacity={0.7}
-          >
-            <View style={styles.backCircle}>
-              <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
-            </View>
-          </TouchableOpacity>
+          {/* Header row: Back + Quick settings */}
+          <View style={styles.headerRow}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Welcome')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.backCircle, { backgroundColor: backBg, borderColor: backBorder }]}>
+                <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
+              </View>
+            </TouchableOpacity>
+            <AuthTopControls />
+          </View>
 
           {/* Toggle Switch */}
           <View style={styles.toggleWrap}>
             <SegmentedToggle
               options={[
-                { label: 'تسجيل الدخول', value: 'login' },
-                { label: 'إنشاء حساب', value: 'signup' },
+                { label: t.login, value: 'login' },
+                { label: t.signup, value: 'signup' },
               ]}
               activeValue="login"
               onChange={(val) => {
@@ -68,7 +74,7 @@ export function LoginScreen({ navigation }: Props): React.JSX.Element {
 
           <View style={styles.form}>
             <AppInput
-              label="البريد الإلكتروني"
+              label={t.email}
               placeholder="example@email.com"
               value={email}
               onChangeText={setEmail}
@@ -78,7 +84,7 @@ export function LoginScreen({ navigation }: Props): React.JSX.Element {
             />
 
             <AppInput
-              label="كلمة المرور"
+              label={t.password}
               placeholder="••••••••"
               value={password}
               onChangeText={setPassword}
@@ -89,11 +95,13 @@ export function LoginScreen({ navigation }: Props): React.JSX.Element {
             />
 
             <TouchableOpacity activeOpacity={0.7} style={styles.forgot}>
-              <AppText style={styles.forgotText}>نسيت كلمة المرور؟</AppText>
+              <AppText style={[styles.forgotText, { color: colors.secondary }]}>
+                {t.forgotPassword}
+              </AppText>
             </TouchableOpacity>
 
             <AppButton
-              title="تسجيل الدخول"
+              title={t.login}
               variant="tertiary"
               onPress={() => {}}
               style={styles.submit}
@@ -108,28 +116,27 @@ export function LoginScreen({ navigation }: Props): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.neutral,
     paddingHorizontal: spacing.xl,
   },
   flex: {
     flex: 1,
   },
   scroll: {
-    paddingTop: spacing['2xl'],
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
     gap: spacing.xl,
   },
-  back: {
-    alignSelf: 'flex-start',
-    marginBottom: spacing.lg,
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
   },
   backCircle: {
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -144,7 +151,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   forgotText: {
-    color: COLORS.primary,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -152,7 +158,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     height: 58,
     borderRadius: 16,
-    shadowColor: COLORS.tertiary,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,
     shadowRadius: 18,

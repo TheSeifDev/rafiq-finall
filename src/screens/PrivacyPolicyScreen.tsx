@@ -3,7 +3,6 @@ import {
   View,
   StyleSheet,
   ScrollView,
-  StatusBar,
   Pressable,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -11,51 +10,40 @@ import { Screen } from '../components/ui/Screen';
 import { AppText } from '../components/ui/AppText';
 import { AppButton } from '../components/ui/AppButton';
 import { spacing } from '../theme';
+import { useTheme } from '../theme/useTheme';
+import { useAppStore } from '../store/app.store';
+import { translations } from '../constants/translations';
 import type { AuthStackParamList } from '../navigation/types';
 import { Ionicons } from '@expo/vector-icons';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'PrivacyPolicy'>;
 
-const COLORS = {
-  neutral: '#0A0F1C',
-  primary: '#00C2FF',
-  tertiary: '#FF3B3B',
-  white: '#FFFFFF',
-};
-
-const SECTIONS = [
-  {
-    title: '1. البيانات التي نجمعها',
-    content: 'نجمع: اسمك، بريدك الإلكتروني، رقم هاتفك، وبيانات صحية تختار مشاركتها.',
-  },
-  {
-    title: '2. كيف نستخدم بياناتك',
-    content: 'نستخدمها لتقديم الخدمة وتحسينها. لن نبيع بياناتك لأي طرف ثالث.',
-  },
-  {
-    title: '3. أمان البيانات',
-    content: 'نستخدم تشفيراً لتأمين بياناتك، لكن لا يوجد نظام آمن 100%.',
-  },
-  {
-    title: '4. حقوقك',
-    content: 'يمكنك الوصول إلى بياناتك، تعديلها، أو حذفها في أي وقت.',
-  },
-  {
-    title: '5. الاحتفاظ بالبيانات',
-    content: 'نحتفظ ببياناتك طالما كان حسابك نشطاً. عند الحذف، نحذفها خلال 30 يوماً.',
-  },
-];
+const PP_KEYS = [
+  { title: 'pp_1_title', body: 'pp_1_body' },
+  { title: 'pp_2_title', body: 'pp_2_body' },
+  { title: 'pp_3_title', body: 'pp_3_body' },
+  { title: 'pp_4_title', body: 'pp_4_body' },
+  { title: 'pp_5_title', body: 'pp_5_body' },
+] as const;
 
 export function PrivacyPolicyScreen({ navigation }: Props): React.JSX.Element {
-  return (
-    <Screen style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.neutral} />
+  const { colors, darkMode } = useTheme();
+  const language = useAppStore((s) => s.language);
+  const t = translations[language];
 
+  const mutedText = darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
+  const bodyText = darkMode ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.65)';
+  const borderColor = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+
+  return (
+    <Screen>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-forward" size={24} color={COLORS.white} />
+          <Ionicons name="arrow-forward" size={24} color={colors.textPrimary} />
         </Pressable>
-        <AppText style={styles.headerTitle}>سياسة الخصوصية</AppText>
+        <AppText style={[styles.headerTitle, { color: colors.textPrimary }]}>
+          {t.privacyPolicy}
+        </AppText>
         <View style={styles.backBtn} />
       </View>
 
@@ -63,21 +51,32 @@ export function PrivacyPolicyScreen({ navigation }: Props): React.JSX.Element {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <AppText style={styles.lastUpdated}>آخر تحديث: أبريل 2026</AppText>
+        <AppText style={[styles.lastUpdated, { color: mutedText }]}>
+          {t.lastUpdated}
+        </AppText>
 
-        {SECTIONS.map((section, index) => (
+        {PP_KEYS.map((key, index) => (
           <View key={index} style={styles.section}>
-            <AppText style={styles.sectionTitle}>{section.title}</AppText>
-            <AppText style={styles.sectionContent}>{section.content}</AppText>
+            <AppText style={[styles.sectionTitle, { color: colors.secondary }]}>
+              {t[key.title]}
+            </AppText>
+            <AppText
+              style={[
+                styles.sectionContent,
+                { color: bodyText, textAlign: language === 'ar' ? 'right' : 'left' },
+              ]}
+            >
+              {t[key.body]}
+            </AppText>
           </View>
         ))}
 
         <View style={styles.bottomSpace} />
       </ScrollView>
 
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { backgroundColor: colors.background, borderTopColor: borderColor }]}>
         <AppButton
-          title="فهمت و أوافق"
+          title={t.understood}
           variant="tertiary"
           onPress={() => navigation.goBack()}
           style={styles.agreeBtn}
@@ -88,7 +87,6 @@ export function PrivacyPolicyScreen({ navigation }: Props): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.neutral },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -98,21 +96,18 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
   },
   backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: COLORS.white },
+  headerTitle: { fontSize: 18, fontWeight: '700' },
   scrollContent: { paddingHorizontal: spacing.lg },
   lastUpdated: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.35)',
     marginBottom: spacing.lg,
     textAlign: 'center',
   },
   section: { marginBottom: spacing.lg },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: COLORS.primary, marginBottom: spacing.sm },
+  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
   sectionContent: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
     lineHeight: 24,
-    textAlign: 'right',
   },
   bottomSpace: { height: 100 },
   bottomBar: {
@@ -123,9 +118,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
     paddingTop: spacing.md,
-    backgroundColor: COLORS.neutral,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
   },
   agreeBtn: { height: 52, borderRadius: 14 },
 });

@@ -9,6 +9,7 @@ import {
   TextInputProps,
 } from 'react-native';
 import { AppText } from './AppText';
+import { useTheme } from '../../theme/useTheme';
 
 interface Props extends Omit<TextInputProps, 'style'> {
   label?: string;
@@ -38,21 +39,40 @@ export function AppInput({
   ...rest
 }: Props) {
   const [focused, setFocused] = useState(false);
+  const { colors, darkMode, isRTL } = useTheme();
+
+  const fieldBg = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
+  const fieldBorder = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+  const focusBg = darkMode ? 'rgba(0,194,255,0.06)' : 'rgba(0,119,200,0.04)';
+  const labelColor = darkMode ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.55)';
+  const placeholderColor = darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.30)';
+  const textAlign = isRTL ? 'right' as const : 'left' as const;
 
   return (
     <View style={[styles.wrapper, containerStyle]}>
-      {label && <AppText style={styles.label}>{label}</AppText>}
-      <View style={[styles.field, focused && styles.fieldFocused]}>
+      {label && (
+        <AppText style={[styles.label, { color: labelColor, textAlign }]}>
+          {label}
+        </AppText>
+      )}
+      <View
+        style={[
+          styles.field,
+          { backgroundColor: fieldBg, borderColor: fieldBorder },
+          focused && { borderColor: colors.secondary, backgroundColor: focusBg },
+        ]}
+      >
         {icon && !isPassword && <View style={styles.leftIcon}>{icon}</View>}
-        
+
         <TextInput
           style={[
             styles.input,
+            { color: colors.textPrimary, textAlign },
             inputStyle,
-            (icon && !isPassword) ? { paddingLeft: 8 } : {}, // ← FIXED: {} بدل undefined
+            (icon && !isPassword) ? { paddingLeft: 8 } : {},
           ]}
           placeholder={placeholder}
-          placeholderTextColor="rgba(255,255,255,0.35)"
+          placeholderTextColor={placeholderColor}
           value={value}
           onChangeText={onChangeText}
           secureTextEntry={secureTextEntry}
@@ -61,11 +81,11 @@ export function AppInput({
           textContentType={textContentType}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          selectionColor="#00C2FF"
-          textAlign="right"
+          selectionColor={colors.secondary}
+          textAlign={textAlign}
           {...rest}
         />
-        
+
         {isPassword && onToggleSecure && (
           <TouchableOpacity onPress={onToggleSecure} style={styles.icon} activeOpacity={0.7}>
             <AppText style={styles.iconText}>
@@ -85,30 +105,20 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.7)',
     marginBottom: 8,
-    textAlign: 'right',
   },
   field: {
     flexDirection: 'row',
     alignItems: 'center',
     height: 58,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 16,
-  },
-  fieldFocused: {
-    borderColor: '#00C2FF',
-    backgroundColor: 'rgba(0, 194, 255, 0.06)',
   },
   input: {
     flex: 1,
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '500',
-    textAlign: 'right',
     height: '100%',
   },
   leftIcon: {

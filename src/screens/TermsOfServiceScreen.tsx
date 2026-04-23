@@ -3,7 +3,6 @@ import {
   View,
   StyleSheet,
   ScrollView,
-  StatusBar,
   Pressable,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -11,59 +10,42 @@ import { Screen } from '../components/ui/Screen';
 import { AppText } from '../components/ui/AppText';
 import { AppButton } from '../components/ui/AppButton';
 import { spacing } from '../theme';
+import { useTheme } from '../theme/useTheme';
+import { useAppStore } from '../store/app.store';
+import { translations } from '../constants/translations';
 import type { AuthStackParamList } from '../navigation/types';
 import { Ionicons } from '@expo/vector-icons';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'TermsOfService'>;
 
-const COLORS = {
-  neutral: '#0A0F1C',
-  primary: '#00C2FF',
-  tertiary: '#FF3B3B',
-  white: '#FFFFFF',
-};
-
-const SECTIONS = [
-  {
-    title: '1. مقدمة',
-    content: 'مرحباً بك في تطبيق "رفيق". باستخدامك لهذا التطبيق، فإنك توافق على الالتزام الكامل بهذه الشروط والأحكام.',
-  },
-  {
-    title: '2. طبيعة الخدمة',
-    content: 'التطبيق يقدم خدمات إرشادية وداعمة في المجال الصحي والنفسي، ولا يُعتبر بديلاً عن الاستشارة الطبية المهنية.',
-  },
-  {
-    title: '3. إخلاء المسؤولية الطبية',
-    content: 'لا يقدم التطبيق تشخيصاً طبياً أو وصفاً للأدوية. أي معلومات صحية يتم تبادلها هي على مسؤولية المستخدم الشخصية.',
-  },
-  {
-    title: '4. عدم تحمل المسؤولية',
-    content: 'لا نتحمل أي مسؤولية عن أضرار مباشرة أو غير مباشرة ناتجة عن استخدام التطبيق.',
-  },
-  {
-    title: '5. مسؤولية المستخدم',
-    content: 'المستخدم يتحمل المسؤولية الكاملة عن صحة المعلومات التي يقدمها وحماية بيانات حسابه.',
-  },
-  {
-    title: '6. إنهاء الخدمة',
-    content: 'نحتفظ بالحق في تعليق أو إنهاء حساب أي مستخدم ينتهك هذه الشروط.',
-  },
-  {
-    title: '7. القانون الواجب التطبيق',
-    content: 'تخضع هذه الشروط لقوانين جمهورية مصر العربية.',
-  },
-];
+const TOS_KEYS = [
+  { title: 'tos_1_title', body: 'tos_1_body' },
+  { title: 'tos_2_title', body: 'tos_2_body' },
+  { title: 'tos_3_title', body: 'tos_3_body' },
+  { title: 'tos_4_title', body: 'tos_4_body' },
+  { title: 'tos_5_title', body: 'tos_5_body' },
+  { title: 'tos_6_title', body: 'tos_6_body' },
+  { title: 'tos_7_title', body: 'tos_7_body' },
+] as const;
 
 export function TermsOfServiceScreen({ navigation }: Props): React.JSX.Element {
-  return (
-    <Screen style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.neutral} />
+  const { colors, darkMode } = useTheme();
+  const language = useAppStore((s) => s.language);
+  const t = translations[language];
 
+  const mutedText = darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
+  const bodyText = darkMode ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.65)';
+  const borderColor = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+
+  return (
+    <Screen>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-forward" size={24} color={COLORS.white} />
+          <Ionicons name="arrow-forward" size={24} color={colors.textPrimary} />
         </Pressable>
-        <AppText style={styles.headerTitle}>شروط الاستخدام</AppText>
+        <AppText style={[styles.headerTitle, { color: colors.textPrimary }]}>
+          {t.termsOfService}
+        </AppText>
         <View style={styles.backBtn} />
       </View>
 
@@ -71,21 +53,32 @@ export function TermsOfServiceScreen({ navigation }: Props): React.JSX.Element {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <AppText style={styles.lastUpdated}>آخر تحديث: أبريل 2026</AppText>
+        <AppText style={[styles.lastUpdated, { color: mutedText }]}>
+          {t.lastUpdated}
+        </AppText>
 
-        {SECTIONS.map((section, index) => (
+        {TOS_KEYS.map((key, index) => (
           <View key={index} style={styles.section}>
-            <AppText style={styles.sectionTitle}>{section.title}</AppText>
-            <AppText style={styles.sectionContent}>{section.content}</AppText>
+            <AppText style={[styles.sectionTitle, { color: colors.secondary }]}>
+              {t[key.title]}
+            </AppText>
+            <AppText
+              style={[
+                styles.sectionContent,
+                { color: bodyText, textAlign: language === 'ar' ? 'right' : 'left' },
+              ]}
+            >
+              {t[key.body]}
+            </AppText>
           </View>
         ))}
 
         <View style={styles.bottomSpace} />
       </ScrollView>
 
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { backgroundColor: colors.background, borderTopColor: borderColor }]}>
         <AppButton
-          title="فهمت و أوافق"
+          title={t.understood}
           variant="tertiary"
           onPress={() => navigation.goBack()}
           style={styles.agreeBtn}
@@ -96,7 +89,6 @@ export function TermsOfServiceScreen({ navigation }: Props): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.neutral },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -106,21 +98,18 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
   },
   backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: COLORS.white },
+  headerTitle: { fontSize: 18, fontWeight: '700' },
   scrollContent: { paddingHorizontal: spacing.lg },
   lastUpdated: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.35)',
     marginBottom: spacing.lg,
     textAlign: 'center',
   },
   section: { marginBottom: spacing.lg },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: COLORS.primary, marginBottom: spacing.sm },
+  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
   sectionContent: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
     lineHeight: 24,
-    textAlign: 'right',
   },
   bottomSpace: { height: 100 },
   bottomBar: {
@@ -131,9 +120,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
     paddingTop: spacing.md,
-    backgroundColor: COLORS.neutral,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
   },
   agreeBtn: { height: 52, borderRadius: 14 },
 });

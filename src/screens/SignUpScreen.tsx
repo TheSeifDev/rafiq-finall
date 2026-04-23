@@ -15,22 +15,24 @@ import { Screen } from '../components/ui/Screen';
 import { AppButton } from '../components/ui/AppButton';
 import { AppInput } from '../components/ui/AppInput';
 import { SegmentedToggle } from '../components/ui/SegmentedToggle';
+import { AuthTopControls } from '../components/AuthTopControls';
 import { spacing } from '../theme';
+import { useTheme } from '../theme/useTheme';
 import { supabase } from '../lib/supabase';
+import { useAppStore } from '../store/app.store';
+import { translations } from '../constants/translations';
 import type { AuthStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'SignUp'>;
 
-const COLORS = {
-  neutral: '#0A0F1C',
-  primary: '#00C2FF',
-  tertiary: '#FF3B3B',
-};
-
 export function SignUpScreen({ navigation }: Props): React.JSX.Element {
   const { width, height } = useWindowDimensions();
   const isSmallDevice = height < 700;
-  const isNarrow = width < 380; // iPhone SE and smaller
+  const isNarrow = width < 380;
+
+  const { colors, darkMode } = useTheme();
+  const language = useAppStore((s) => s.language);
+  const t = translations[language];
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -42,6 +44,9 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
   const [secure, setSecure] = useState(true);
   const [secureConfirm, setSecureConfirm] = useState(true);
   const [loading, setLoading] = useState(false);
+
+  const backBg = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
+  const backBorder = darkMode ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)';
 
   const responsiveSpacing = {
     top: isSmallDevice ? spacing.lg : spacing['2xl'],
@@ -57,9 +62,9 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
       Alert.alert('تنبيه', 'كلمتا المرور غير متطابقتين');
       return;
     }
-    
+
     setLoading(true);
-    
+
     try {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -98,7 +103,7 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
       }
 
       Alert.alert('نجاح', 'تم إنشاء الحساب بنجاح! يرجى التحقق من بريدك الإلكتروني.');
-      
+
     } catch (err: any) {
       Alert.alert('خطأ غير متوقع', err.message);
     } finally {
@@ -106,14 +111,12 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
     }
   }, [name, phone, email, password, confirmPassword, location, birthDate]);
 
-  // Helper: row of inputs (side by side on wide screens, stacked on narrow)
   const Row = ({ children }: { children: React.ReactNode }) => (
     <View style={[styles.row, isNarrow && styles.rowColumn]}>
       {children}
     </View>
   );
 
-  // Helper: each input takes half width (or full if narrow)
   const Col = ({ children }: { children: React.ReactNode }) => (
     <View style={styles.col}>
       {children}
@@ -138,21 +141,24 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
           ]}
           keyboardShouldPersistTaps="handled"
         >
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Welcome')}
-            style={styles.back}
-            activeOpacity={0.7}
-          >
-            <View style={styles.backCircle}>
-              <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
-            </View>
-          </TouchableOpacity>
+          {/* Header row: Back + Quick settings */}
+          <View style={styles.headerRow}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Welcome')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.backCircle, { backgroundColor: backBg, borderColor: backBorder }]}>
+                <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
+              </View>
+            </TouchableOpacity>
+            <AuthTopControls />
+          </View>
 
           <View style={styles.toggleWrap}>
             <SegmentedToggle
               options={[
-                { label: 'تسجيل الدخول', value: 'login' },
-                { label: 'إنشاء حساب', value: 'signup' },
+                { label: t.login, value: 'login' },
+                { label: t.signup, value: 'signup' },
               ]}
               activeValue="signup"
               onChange={(val) => {
@@ -164,8 +170,8 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
           <View style={styles.form}>
             {/* Full width: Name */}
             <AppInput
-              label="الاسم الكامل"
-              placeholder="الاسم الكامل"
+              label={t.fullName}
+              placeholder={t.fullName}
               value={name}
               onChangeText={setName}
               textContentType="name"
@@ -176,7 +182,7 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
             <Row>
               <Col>
                 <AppInput
-                  label="رقم الجوال"
+                  label={t.phone}
                   placeholder="01xxxxxxxx"
                   value={phone}
                   onChangeText={(text) => {
@@ -190,7 +196,7 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
               </Col>
               <Col>
                 <AppInput
-                  label="البريد الإلكتروني"
+                  label={t.email}
                   placeholder="example@email.com"
                   value={email}
                   onChangeText={setEmail}
@@ -206,16 +212,16 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
             <Row>
               <Col>
                 <AppInput
-                  label="الموقع"
+                  label={t.location}
                   placeholder="القاهرة، مصر"
                   value={location}
                   onChangeText={setLocation}
-                  icon={<Ionicons name="location-outline" size={20} color="rgba(255,255,255,0.5)" />}
+                  icon={<Ionicons name="location-outline" size={20} color={colors.textSecondary} />}
                 />
               </Col>
               <Col>
                 <AppInput
-                  label="تاريخ الميلاد"
+                  label={t.birthDate}
                   placeholder="YYYY-MM-DD"
                   value={birthDate}
                   onChangeText={(text) => {
@@ -229,7 +235,7 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
                     setBirthDate(cleaned);
                   }}
                   keyboardType="numeric"
-                  icon={<Ionicons name="calendar-outline" size={20} color="rgba(255,255,255,0.5)" />}
+                  icon={<Ionicons name="calendar-outline" size={20} color={colors.textSecondary} />}
                 />
               </Col>
             </Row>
@@ -238,7 +244,7 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
             <Row>
               <Col>
                 <AppInput
-                  label="كلمة المرور"
+                  label={t.password}
                   placeholder="••••••••"
                   value={password}
                   onChangeText={setPassword}
@@ -251,7 +257,7 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
               </Col>
               <Col>
                 <AppInput
-                  label="تأكيد كلمة المرور"
+                  label={t.confirmPassword}
                   placeholder="••••••••"
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
@@ -264,7 +270,7 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
             </Row>
 
             <AppButton
-              title="إنشاء حساب"
+              title={t.signup}
               variant="tertiary"
               onPress={handleSignUp}
               loading={loading}
@@ -283,7 +289,6 @@ export function SignUpScreen({ navigation }: Props): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.neutral,
     paddingHorizontal: spacing.xl,
   },
   flex: {
@@ -292,16 +297,16 @@ const styles = StyleSheet.create({
   scroll: {
     paddingBottom: spacing.xl,
   },
-  back: {
-    alignSelf: 'flex-start',
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   backCircle: {
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -322,13 +327,12 @@ const styles = StyleSheet.create({
   },
   col: {
     flex: 1,
-    minWidth: 140, // قبل ما ينزل تحت على الشاشات المتوسطة
+    minWidth: 140,
   },
   submit: {
     marginTop: spacing.lg,
     height: 58,
     borderRadius: 16,
-    shadowColor: COLORS.tertiary,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,
     shadowRadius: 18,

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { AppText } from './AppText';
+import { useTheme } from '../../theme/useTheme';
 
 interface Option {
   label: string;
@@ -14,8 +15,14 @@ interface Props {
 }
 
 export function SegmentedToggle({ options, activeValue, onChange }: Props) {
+  const { colors, darkMode } = useTheme();
+
+  const trackBg = darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+  const trackBorder = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const inactiveText = darkMode ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.40)';
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: trackBg, borderColor: trackBorder }]}>
       {options.map((option) => {
         const isActive = option.value === activeValue;
         return (
@@ -23,9 +30,15 @@ export function SegmentedToggle({ options, activeValue, onChange }: Props) {
             key={option.value}
             activeOpacity={0.8}
             onPress={() => onChange(option.value)}
-            style={[styles.pill, isActive && styles.activePill]}
+            style={[styles.pill, isActive && [styles.activePill, { backgroundColor: colors.danger }]]}
           >
-            <AppText style={[styles.text, isActive && styles.activeText]}>
+            <AppText
+              style={[
+                styles.text,
+                { color: inactiveText },
+                isActive && styles.activeText,
+              ]}
+            >
               {option.label}
             </AppText>
           </TouchableOpacity>
@@ -38,12 +51,10 @@ export function SegmentedToggle({ options, activeValue, onChange }: Props) {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     borderRadius: 14,
     padding: 4,
     height: 50,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
   pill: {
     flex: 1,
@@ -52,8 +63,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   activePill: {
-    backgroundColor: '#FF3B3B',
-    shadowColor: '#FF3B3B',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 10,
@@ -62,7 +71,6 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 14,
     fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.45)',
   },
   activeText: {
     color: '#FFFFFF',
