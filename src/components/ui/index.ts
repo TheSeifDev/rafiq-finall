@@ -8,4 +8,5 @@ export { Spacer } from './Spacer';
 export { LoadingOverlay } from './LoadingOverlay';
 export { EmptyState } from './EmptyState';
 export { ErrorMessage } from './ErrorMessage';
+export { ScreenHeader } from './ScreenHeader';
 

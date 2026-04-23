@@ -8,6 +8,7 @@ import {
   TextStyle,
   TextInputProps,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { AppText } from './AppText';
 import { useTheme } from '../../theme/useTheme';
 
@@ -88,9 +89,11 @@ export function AppInput({
 
         {isPassword && onToggleSecure && (
           <TouchableOpacity onPress={onToggleSecure} style={styles.icon} activeOpacity={0.7}>
-            <AppText style={styles.iconText}>
-              {secureTextEntry ? '👁' : '🙈'}
-            </AppText>
+            <Ionicons
+              name={secureTextEntry ? 'eye-outline' : 'eye-off-outline'}
+              size={20}
+              color={colors.textSecondary}
+            />
           </TouchableOpacity>
         )}
       </View>
@@ -127,8 +130,5 @@ const styles = StyleSheet.create({
   icon: {
     padding: 6,
     marginLeft: 4,
-  },
-  iconText: {
-    fontSize: 18,
   },
 });

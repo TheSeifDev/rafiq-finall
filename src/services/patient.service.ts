@@ -8,6 +8,14 @@ export type PatientProfile = {
   gender: string | null;
   blood_type: string | null;
   phone: string | null;
+  location: string | null;
+  birth_date: string | null;
+  address: string | null;
+  emergency_contact: string | null;
+  condition_type: string | null;
+  risk_level: string | null;
+  notes: string | null;
+  relationship: string | null;
 };
 
 export const patientService = {

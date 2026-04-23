@@ -26,6 +26,8 @@ export type ProfileStackParamList = {
   Settings: undefined;
   Medications: undefined;
   EditProfile: undefined;
+  ChangePassword: undefined;
+  Privacy: undefined;
 };
 
 // ─── Screen-prop helpers ────────────────────────────────────
