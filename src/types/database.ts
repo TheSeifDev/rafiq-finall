@@ -180,6 +180,72 @@ export interface Medication {
   end_date: string | null;
   instructions: string | null;
   is_active: boolean;
+
+  // v2 scheduling + stock (nullable for older rows)
+  strength: string | null;
+  category: string | null;
+  reason: string | null;
+  form: string | null;
+  schedule_type: string | null;
+  times: unknown;
+  meal_rule: string | null;
+  quantity_type: string | null;
+  total_quantity: number | null;
+  remaining_quantity: number | null;
+  refill_threshold: number | null;
+  notes: string | null;
+  doctor_name: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface MedicationInsert {
+  patient_id: string;
+  name: string;
+  dosage: string;
+  frequency: string;
+  time_of_day?: string[];
+  start_date?: string | null;
+  end_date?: string | null;
+  instructions?: string | null;
+  is_active?: boolean;
+
+  strength?: string | null;
+  category?: string | null;
+  reason?: string | null;
+  form?: string | null;
+  schedule_type?: string | null;
+  times?: unknown;
+  meal_rule?: string | null;
+  quantity_type?: string | null;
+  total_quantity?: number | null;
+  remaining_quantity?: number | null;
+  refill_threshold?: number | null;
+  notes?: string | null;
+  doctor_name?: string | null;
+  active?: boolean;
+}
+
+// ─────────────────────────────────────────
+// Medication Logs
+// ─────────────────────────────────────────
+export interface MedicationLog {
+  id: string;
+  medication_id: string;
+  taken_at: string;
+  scheduled_for: string | null;
+  skipped: boolean;
+  note: string | null;
+  created_at: string;
+}
+
+export interface MedicationLogInsert {
+  medication_id: string;
+  taken_at?: string;
+  scheduled_for?: string | null;
+  skipped?: boolean;
+  note?: string | null;
 }
 
 // ─────────────────────────────────────────
