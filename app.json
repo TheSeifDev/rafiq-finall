@@ -8,18 +8,15 @@
     "scheme": "rafiq",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-
     "splash": {
       "image": "./assets/logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.rafiq.app"
     },
-
     "android": {
       "package": "com.rafiq.app",
       "adaptiveIcon": {
@@ -29,15 +26,14 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
-
     "web": {
       "favicon": "./assets/icon.png"
     },
-
     "plugins": [
       "expo-sqlite",
       "expo-font",
-      "expo-asset"
+      "expo-asset",
+      "expo-localization"
     ]
   }
 }
