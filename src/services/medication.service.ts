@@ -43,7 +43,12 @@ export type MedicationLog = {
   created_at: string;
 };
 
-export type MedicationLogInsert = Omit<MedicationLog, 'id' | 'created_at'> & {
+export type MedicationLogInsert = {
+  medication_id: string;
+  taken_at?: string;
+  scheduled_for?: string | null;
+  skipped?: boolean;
+  note?: string | null;
   created_at?: string;
 };
 
@@ -122,5 +127,18 @@ export const medicationService = {
   async addLog(payload: MedicationLogInsert): Promise<void> {
     const { error } = await supabase.from('medication_logs').insert(payload);
     if (error) throw new Error(error.message);
+  },
+
+  async listLogsForPatientRange(patientId: string, startIso: string, endIso: string): Promise<MedicationLog[]> {
+    const { data, error } = await supabase
+      .from('medication_logs')
+      .select('*, medications!inner(patient_id)')
+      .eq('medications.patient_id', patientId)
+      .gte('taken_at', startIso)
+      .lt('taken_at', endIso)
+      .order('taken_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return (data ?? []) as unknown as MedicationLog[];
   },
 };
