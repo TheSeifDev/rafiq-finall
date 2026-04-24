@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { patientService } from '../services/patient.service';
-import { useAuth } from '../store/AuthContext';
+import { useAuthStore } from '../store/auth.store';
 import type { Patient } from '../types/database';
 
 interface UsePatientResult {
@@ -18,13 +18,15 @@ interface UsePatientResult {
  * calling patientService.getPatientId() directly.
  */
 export function usePatient(): UsePatientResult {
-  const { user } = useAuth();
+  const session = useAuthStore((s) => s.session);
+  const userId = session?.user?.id ?? null;
+
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!user) {
+    if (!userId) {
       setLoading(false);
       return;
     }
@@ -33,15 +35,15 @@ export function usePatient(): UsePatientResult {
     setLoading(true);
 
     try {
-      const data = await patientService.getPatient(user.id);
+      const data = await patientService.getProfile(userId);
       setPatient(data);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'فشل تحميل بيانات المريض';
+      const msg = err instanceof Error ? err.message : 'Failed to load patient data';
       setError(msg);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     load();

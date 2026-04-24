@@ -1,6 +1,12 @@
 /**
- * Re-exports from the canonical ThemeContext in src/store/ThemeContext.tsx.
- * All screen imports from '../context/ThemeContext' are automatically
- * resolved here — no need to touch individual screen files.
+ * @deprecated — Legacy re-export. Use `useTheme` from `../../theme/useTheme` directly.
+ * Kept as a compatibility shim for any remaining imports.
  */
-export { ThemeProvider, useTheme } from '../store/ThemeContext';
+export { useTheme } from '../theme/useTheme';
+
+/** No-op ThemeProvider — the app uses Zustand for theme state */
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  return children as React.ReactElement;
+}
+
+import React from 'react';

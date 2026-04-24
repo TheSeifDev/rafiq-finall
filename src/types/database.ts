@@ -1,22 +1,109 @@
 // ─────────────────────────────────────────
+// Structured JSONB Sub-types
+// ─────────────────────────────────────────
+
+/** Detailed address for ambulance / emergency teams */
+export interface AddressData {
+  governorate?: string;
+  district?: string;
+  street?: string;
+  building_number?: string;
+  apartment_number?: string;
+  floor?: string;
+  apartment_side?: 'right' | 'left' | '';
+  landmark?: string;
+  extra_notes?: string;
+}
+
+/** Reporter / caregiver — the person filling the profile */
+export interface ReporterData {
+  name?: string;
+  relationship?: string;
+  phone?: string;
+  is_primary_contact?: boolean;
+}
+
+/** Preferred hospital information */
+export interface HospitalData {
+  name?: string;
+  address?: string;
+  phone?: string;
+  has_medical_file?: boolean;
+  file_number?: string;
+}
+
+// ─────────────────────────────────────────
 // Patients
 // ─────────────────────────────────────────
 export interface Patient {
   id: string;
   user_id: string;
   full_name: string;
-  age: number;
-  gender: 'male' | 'female';
-  blood_type: string;
-  allergies: string | null;
+  age: number | null;
+  gender: 'male' | 'female' | null;
+  blood_type: string | null;
+  phone: string | null;
+  birth_date: string | null;
+  condition_type: string | null;
+  risk_level: string | null;
+  notes: string | null;
+  relationship: string | null;
+  // Structured JSONB
+  address_data: AddressData;
+  reporter_data: ReporterData;
+  hospital_data: HospitalData;
+  // Location
+  latitude: number | null;
+  longitude: number | null;
+  geocoded_address: string | null;
+  // Legacy (deprecated — kept for backward compat)
+  address?: string | null;
+  emergency_contact?: string | null;
+  location?: string | null;
+  // Timestamps
+  created_at: string;
+  updated_at: string | null;
+}
+
+// ─────────────────────────────────────────
+// Emergency Contacts (normalized table)
+// ─────────────────────────────────────────
+export interface EmergencyContact {
+  id: string;
+  patient_id: string;
+  name: string;
+  relation: string;
+  phone: string;
+  priority: number;
+  is_primary: boolean;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface EmergencyContactInsert {
+  patient_id: string;
+  name: string;
+  relation: string;
+  phone: string;
+  priority?: number;
+  is_primary?: boolean;
+}
+
+// ─────────────────────────────────────────
+// Patient Conditions (normalized table)
+// ─────────────────────────────────────────
+export interface PatientCondition {
+  id: string;
+  patient_id: string;
+  condition_key: string;
+  custom_note: string | null;
   created_at: string;
 }
 
-export interface UserProfile {
-  full_name: string;
-  age: string;
-  blood_type: string;
-  allergies: string;
+export interface PatientConditionInsert {
+  patient_id: string;
+  condition_key: string;
+  custom_note?: string | null;
 }
 
 // ─────────────────────────────────────────

@@ -249,7 +249,7 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
           </View>
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => navigation.navigate('EditProfile')}
+            onPress={() => navigation.navigate('EmergencyProfile')}
             style={[styles.editBtn, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '25' }]}
           >
             <Ionicons name="pencil-outline" size={16} color={colors.primary} />

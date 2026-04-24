@@ -42,7 +42,6 @@ async function ensurePatientRow(session: Session): Promise<void> {
       user_id: user.id,
       full_name: fullName,
       phone: meta.phone ?? null,
-      location: meta.location ?? null,
       birth_date: meta.birth_date ?? null,
     });
   } catch {

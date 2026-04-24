@@ -17,7 +17,7 @@ export const Routes = {
   ProfileMain: 'ProfileMain',
   Settings: 'Settings',
   Medications: 'Medications',
-  EditProfile: 'EditProfile',
+  EmergencyProfile: 'EmergencyProfile',
 } as const;
 
 export type RouteName = (typeof Routes)[keyof typeof Routes];

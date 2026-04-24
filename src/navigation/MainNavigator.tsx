@@ -9,7 +9,7 @@ import { ChatScreen } from '../screens/ChatScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { MedicationsScreen } from '../screens/MedicationsScreen';
-import { EditProfileScreen } from '../screens/EditProfileScreen';
+import { EmergencyProfileScreen } from '../screens/EmergencyProfileScreen';
 import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
 import { PrivacyScreen } from '../screens/PrivacyScreen';
 import { BottomTabBar } from '../components/ui/BottomTabBar';
@@ -26,7 +26,7 @@ function ProfileStackNavigator(): React.JSX.Element {
       <ProfileStackNav.Screen name="ProfileMain" component={ProfileScreen} />
       <ProfileStackNav.Screen name="Settings" component={SettingsScreen} options={{ animation: 'slide_from_right' }} />
       <ProfileStackNav.Screen name="Medications" component={MedicationsScreen} options={{ animation: 'slide_from_right' }} />
-      <ProfileStackNav.Screen name="EditProfile" component={EditProfileScreen} options={{ animation: 'slide_from_right' }} />
+      <ProfileStackNav.Screen name="EmergencyProfile" component={EmergencyProfileScreen} options={{ animation: 'slide_from_right' }} />
       <ProfileStackNav.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ animation: 'slide_from_right' }} />
       <ProfileStackNav.Screen name="Privacy" component={PrivacyScreen} options={{ animation: 'slide_from_right' }} />
     </ProfileStackNav.Navigator>

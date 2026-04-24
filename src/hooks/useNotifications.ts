@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { notificationService } from '../services/notification.service';
-import { useAuth } from '../store/AuthContext';
+import { useAuthStore } from '../store/auth.store';
 import type { Notification } from '../types/database';
 
 interface UseNotificationsResult {
@@ -19,7 +19,8 @@ interface UseNotificationsResult {
  * Provides markRead and markAllRead actions.
  */
 export function useNotifications(): UseNotificationsResult {
-  const { user } = useAuth();
+  const session = useAuthStore((s) => s.session);
+  const user = session?.user ?? null;
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

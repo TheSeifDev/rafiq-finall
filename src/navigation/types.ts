@@ -25,7 +25,7 @@ export type ProfileStackParamList = {
   ProfileMain: undefined;
   Settings: undefined;
   Medications: undefined;
-  EditProfile: undefined;
+  EmergencyProfile: undefined;
   ChangePassword: undefined;
   Privacy: undefined;
 };
