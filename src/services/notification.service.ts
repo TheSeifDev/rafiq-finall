@@ -17,6 +17,16 @@ export const notificationService = {
     if (error) throw new Error(error.message);
     return (data ?? []) as AppNotification[];
   },
+  async createNotification(payload: { user_id: string; title: string; body: string; type?: string | null }): Promise<void> {
+    const { error } = await supabase.from('notifications').insert({
+      user_id: payload.user_id,
+      title: payload.title,
+      body: payload.body,
+      type: payload.type ?? null,
+      is_read: false,
+    });
+    if (error) throw new Error(error.message);
+  },
   async markAsRead(id: string): Promise<void> {
     const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
     if (error) throw new Error(error.message);

@@ -27,6 +27,7 @@ import { MedicationFilterSheet, type MedicationFilters } from '../components/med
 import { classifyStock } from '../lib/medications/medicationMath';
 import { estimateDosesPerDay } from '../lib/medications/medicationSchedule';
 import { MedicationFormSheet } from '../components/medications/MedicationFormSheet';
+import { syncMedicationReminders, computeMissedDosesForToday } from '../lib/notifications/medicationReminders';
 
 type Props = ProfileStackScreenProps<'Medications'>;
 
@@ -34,6 +35,7 @@ export function MedicationsScreen({ navigation }: Props): React.JSX.Element {
   const session = useAuthStore((s) => s.session);
   const { colors, darkMode } = useTheme();
   const language = useAppStore((s) => s.language);
+  const notificationPrefs = useAppStore((s) => s.notificationPrefs);
   const t = translations[language] as any;
   const isAr = language === 'ar';
   const isRTL = language === 'ar';
@@ -102,12 +104,25 @@ export function MedicationsScreen({ navigation }: Props): React.JSX.Element {
       setTodayTakenCount(taken);
       setTodayScheduledCount(scheduled);
       setTodayMissedCount(missed);
+
+      // Sync device reminders + generate low stock / missed-dose checks (deduped)
+      syncMedicationReminders({
+        patientId: profile.id,
+        userId: session.user.id,
+        enabled: Boolean(notificationPrefs.medicationReminders),
+        medications: data,
+        language,
+      }).catch(() => undefined);
+
+      // Stronger missed-dose computation (used to keep dashboard correct if schedule is time-based)
+      const missedCalc = computeMissedDosesForToday({ medications: data, logsToday: logs, graceMinutes: 60 });
+      if (missedCalc.missedCount !== missed) setTodayMissedCount(missedCalc.missedCount);
     } catch {
       // silent
     } finally {
       setLoading(false);
     }
-  }, [session?.user.id]);
+  }, [session?.user.id, language, notificationPrefs.medicationReminders]);
 
   useEffect(() => {
     load();

@@ -7,6 +7,7 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { useAppStore } from './src/store/app.store';
 import { linking } from './src/navigation/linking';
 import { useAuthStore } from './src/store/auth.store';
+import { initNotificationsOnce } from './src/lib/notifications/medicationReminders';
 
 function Boot(): React.JSX.Element {
   const initialize = useAuthStore((state) => state.initialize);
@@ -16,6 +17,7 @@ function Boot(): React.JSX.Element {
   useEffect(() => {
     hydrate(Localization.getLocales()[0]?.languageCode === 'ar' ? 'ar' : 'en').catch(() => undefined);
     initialize().catch(() => undefined);
+    initNotificationsOnce().catch(() => undefined);
   }, [hydrate, initialize]);
 
   useEffect(() => {
