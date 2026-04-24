@@ -1,10 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { Medication, MedicationLog } from '../../services/medication.service';
 import { parseMedicationTimes } from '../medications/medicationSchedule';
 import { classifyStock } from '../medications/medicationMath';
 import { notificationService } from '../../services/notification.service';
+import {
+  safeInitNotifications,
+  safeRequestPermissions,
+  safeScheduleNotification,
+  safeCancelNotification,
+  PRIORITY,
+  TRIGGER,
+} from './notificationSafety';
 
 type ScheduledMap = Record<string, Record<string, string>>; // medId -> timeKey -> notifId
 
@@ -34,32 +41,12 @@ function parseHHMM(time: string): { hour: number; minute: number } | null {
 }
 
 export async function initNotificationsOnce(): Promise<void> {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
-  });
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('medications', {
-      name: 'Medications',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 200, 100, 200],
-      lightColor: '#0077C8',
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    });
-  }
+  await safeInitNotifications();
 }
 
 export async function ensureNotificationPermission(): Promise<boolean> {
-  const settings = await Notifications.getPermissionsAsync();
-  if (settings.granted) return true;
-  const req = await Notifications.requestPermissionsAsync();
-  return req.granted;
+  const result = await safeRequestPermissions();
+  return result.granted;
 }
 
 export async function syncMedicationReminders(opts: {
@@ -109,19 +96,19 @@ export async function syncMedicationReminders(opts: {
           ? `حان وقت جرعة: ${med.name}${med.strength ? ` (${med.strength})` : ''}`
           : `Time for dose: ${med.name}${med.strength ? ` (${med.strength})` : ''}`;
 
-      const id = await Notifications.scheduleNotificationAsync({
+      const id = await safeScheduleNotification({
         content: {
           title,
           body,
           sound: true,
-          priority: Notifications.AndroidNotificationPriority.MAX,
+          priority: PRIORITY.MAX,
           ...(Platform.OS === 'android' ? { channelId: 'medications' } : null),
           data: { kind: 'medication_reminder', medicationId: med.id, patientId },
         },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.CALENDAR, hour: hhmm.hour, minute: hhmm.minute, repeats: true },
+        trigger: { type: TRIGGER.CALENDAR, hour: hhmm.hour, minute: hhmm.minute, repeats: true },
       });
 
-      nextMap[med.id][key] = id;
+      if (id) nextMap[med.id][key] = id;
     }
   }
 
@@ -139,7 +126,7 @@ async function cancelAllForPatient(patientId: string): Promise<void> {
   for (const medId of Object.keys(existing)) {
     for (const notifId of Object.values(existing[medId] ?? {})) {
       try {
-        await Notifications.cancelScheduledNotificationAsync(notifId);
+        await safeCancelNotification(notifId);
       } catch {
         // ignore
       }
@@ -155,7 +142,7 @@ async function cancelOrphans(existing: ScheduledMap | null, nextMap: ScheduledMa
       const stillNeeded = Boolean(nextMap?.[medId]?.[key]);
       if (!stillNeeded) {
         try {
-          await Notifications.cancelScheduledNotificationAsync(notifId);
+          await safeCancelNotification(notifId);
         } catch {
           // ignore
         }

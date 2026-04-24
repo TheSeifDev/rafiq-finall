@@ -20,6 +20,13 @@ export type MainTabParamList = {
   Profile: NavigatorScreenParams<ProfileStackParamList>;
 };
 
+// ─── Main Stack (wraps tabs + modal screens) ─────────────────
+export type MainStackParamList = {
+  MainTabs: NavigatorScreenParams<MainTabParamList>;
+  NotificationCenter: undefined;
+  NotificationSettings: undefined;
+};
+
 // ─── Profile Stack (nested inside Profile tab) ──────────────
 export type ProfileStackParamList = {
   ProfileMain: undefined;
@@ -34,11 +41,20 @@ export type ProfileStackParamList = {
 export type AuthScreenProps<T extends keyof AuthStackParamList> =
   NativeStackScreenProps<AuthStackParamList, T>;
 
+export type MainStackScreenProps<T extends keyof MainStackParamList> =
+  NativeStackScreenProps<MainStackParamList, T>;
+
 export type MainTabScreenProps<T extends keyof MainTabParamList> =
-  BottomTabScreenProps<MainTabParamList, T>;
+  CompositeScreenProps<
+    BottomTabScreenProps<MainTabParamList, T>,
+    NativeStackScreenProps<MainStackParamList>
+  >;
 
 export type ProfileStackScreenProps<T extends keyof ProfileStackParamList> =
   CompositeScreenProps<
     NativeStackScreenProps<ProfileStackParamList, T>,
-    BottomTabScreenProps<MainTabParamList>
+    CompositeScreenProps<
+      BottomTabScreenProps<MainTabParamList>,
+      NativeStackScreenProps<MainStackParamList>
+    >
   >;

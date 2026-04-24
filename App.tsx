@@ -17,7 +17,7 @@ function Boot(): React.JSX.Element {
   useEffect(() => {
     hydrate(Localization.getLocales()[0]?.languageCode === 'ar' ? 'ar' : 'en').catch(() => undefined);
     initialize().catch(() => undefined);
-    initNotificationsOnce().catch(() => undefined);
+    initNotificationsOnce().catch((e) => console.warn('[Notifications] Init failed:', e));
   }, [hydrate, initialize]);
 
   useEffect(() => {

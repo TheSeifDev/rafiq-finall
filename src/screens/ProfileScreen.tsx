@@ -166,7 +166,7 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
   const session = useAuthStore((s) => s.session);
   const signOut = useAuthStore((s) => s.signOut);
   const { colors, darkMode, isRTL } = useTheme();
-  const { language, darkMode: isDark, notificationPrefs, setDarkMode, setLanguage, setNotificationPrefs } = useAppStore();
+  const { language, darkMode: isDark, setDarkMode, setLanguage } = useAppStore();
   const t = translations[language] as any;
   const isAr = language === 'ar';
 
@@ -308,35 +308,11 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
           <SettingsRow
             icon="notifications-outline"
             iconColor="#F59E0B"
-            label={t.medReminders}
-            darkMode={darkMode}
-            colors={colors}
-            showChevron={false}
-            rightContent={
-              <Switch
-                value={notificationPrefs.medicationReminders}
-                onValueChange={(v) => setNotificationPrefs({ medicationReminders: v })}
-                trackColor={{ false: '#D1D5DB', true: colors.primary + '50' }}
-                thumbColor={notificationPrefs.medicationReminders ? colors.primary : '#F3F4F6'}
-              />
-            }
-          />
-          <SettingsRow
-            icon="pulse-outline"
-            iconColor="#10B981"
-            label={t.vitalsAlerts}
+            label={t.notificationsLabel}
+            onPress={() => (navigation as any).navigate('NotificationSettings')}
             darkMode={darkMode}
             colors={colors}
             isLast
-            showChevron={false}
-            rightContent={
-              <Switch
-                value={notificationPrefs.vitalsAlerts}
-                onValueChange={(v) => setNotificationPrefs({ vitalsAlerts: v })}
-                trackColor={{ false: '#D1D5DB', true: colors.primary + '50' }}
-                thumbColor={notificationPrefs.vitalsAlerts ? colors.primary : '#F3F4F6'}
-              />
-            }
           />
         </SectionGroup>
 

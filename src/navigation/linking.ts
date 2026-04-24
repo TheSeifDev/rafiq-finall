@@ -1,11 +1,17 @@
 import type { LinkingOptions } from '@react-navigation/native';
-import type { MainTabParamList } from './types';
+import type { MainStackParamList } from './types';
 
-export const linking: LinkingOptions<MainTabParamList> = {
+export const linking: LinkingOptions<MainStackParamList> = {
   prefixes: ['rafiq://', 'https://rafiq.app'],
   config: {
     screens: {
-      Emergency: 'emergency',
+      MainTabs: {
+        screens: {
+          Emergency: 'emergency',
+        },
+      },
+      NotificationCenter: 'notifications',
+      NotificationSettings: 'notification-settings',
     },
   },
 };

@@ -2,9 +2,30 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { AppLanguage } from '../constants/translations';
 
-type NotificationPrefs = {
+export type NotificationPrefs = {
   medicationReminders: boolean;
+  lowStockAlerts: boolean;
+  emergencyAlerts: boolean;
+  chatAlerts: boolean;
   vitalsAlerts: boolean;
+  sound: boolean;
+  vibration: boolean;
+  quietHoursEnabled: boolean;
+  quietHoursStart: string; // "22:00"
+  quietHoursEnd: string;   // "07:00"
+};
+
+const DEFAULT_NOTIF_PREFS: NotificationPrefs = {
+  medicationReminders: true,
+  lowStockAlerts: true,
+  emergencyAlerts: true,
+  chatAlerts: true,
+  vitalsAlerts: true,
+  sound: true,
+  vibration: true,
+  quietHoursEnabled: false,
+  quietHoursStart: '22:00',
+  quietHoursEnd: '07:00',
 };
 
 type AppState = {
@@ -19,32 +40,49 @@ type AppState = {
 
 const STORAGE_KEY = 'rafiq_app_prefs_v2';
 
+function persist(state: AppState) {
+  return AsyncStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      language: state.language,
+      darkMode: state.darkMode,
+      notificationPrefs: state.notificationPrefs,
+    }),
+  );
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   language: 'ar',
   darkMode: false,
-  notificationPrefs: { medicationReminders: true, vitalsAlerts: true },
+  notificationPrefs: { ...DEFAULT_NOTIF_PREFS },
   hydrate: async (fallbackLanguage) => {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) {
       set({ language: fallbackLanguage });
       return;
     }
-    const parsed = JSON.parse(raw) as Omit<AppState, 'hydrate' | 'setLanguage' | 'setDarkMode' | 'setNotificationPrefs'>;
-    set(parsed);
+    try {
+      const parsed = JSON.parse(raw);
+      // Merge with defaults so new fields get fallback values on upgrade.
+      set({
+        language: parsed.language ?? fallbackLanguage,
+        darkMode: parsed.darkMode ?? false,
+        notificationPrefs: { ...DEFAULT_NOTIF_PREFS, ...(parsed.notificationPrefs ?? {}) },
+      });
+    } catch {
+      set({ language: fallbackLanguage });
+    }
   },
   setLanguage: async (language) => {
     set({ language });
-    const state = get();
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ language: state.language, darkMode: state.darkMode, notificationPrefs: state.notificationPrefs }));
+    await persist(get());
   },
   setDarkMode: async (enabled) => {
     set({ darkMode: enabled });
-    const state = get();
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ language: state.language, darkMode: state.darkMode, notificationPrefs: state.notificationPrefs }));
+    await persist(get());
   },
   setNotificationPrefs: async (prefs) => {
     set((state) => ({ notificationPrefs: { ...state.notificationPrefs, ...prefs } }));
-    const state = get();
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ language: state.language, darkMode: state.darkMode, notificationPrefs: state.notificationPrefs }));
+    await persist(get());
   },
 }));

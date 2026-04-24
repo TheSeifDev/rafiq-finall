@@ -9,6 +9,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import type { CompositeScreenProps } from '@react-navigation/native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppText } from '../components/ui/AppText';
 import { Screen } from '../components/ui/Screen';
 import { spacing } from '../theme';
@@ -20,9 +22,12 @@ import { vitalsService, type VitalsRecord } from '../services/vitals.service';
 import { medicationService, type Medication } from '../services/medication.service';
 import { notificationService, type AppNotification } from '../services/notification.service';
 import { translations } from '../constants/translations';
-import type { MainTabParamList } from '../navigation/types';
+import type { MainTabParamList, MainStackParamList } from '../navigation/types';
 
-type Props = BottomTabScreenProps<MainTabParamList, 'Home'>;
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<MainTabParamList, 'Home'>,
+  NativeStackScreenProps<MainStackParamList>
+>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -315,9 +320,7 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
           </View>
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => {
-              // Navigate to a notifications screen or show modal
-            }}
+            onPress={() => navigation.navigate('NotificationCenter')}
             style={[styles.notifBtn, { backgroundColor: surfaceColor, borderColor: cardBorder }]}
           >
             <Ionicons name="notifications-outline" size={22} color={colors.textPrimary} />
