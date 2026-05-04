@@ -17,16 +17,16 @@ import { Screen } from '../components/ui/Screen';
 import { useLocale } from '../hooks/useLocale';
 
 const C = {
-  bg: '#0B1120',
-  surface: '#0F172A',
-  card: '#151E2E',
-  cardBorder: '#1E293B',
-  text: '#F8FAFC',
+  bg: '#0A0F1C',
+  surface: '#111827',
+  card: '#1A2332',
+  cardBorder: 'rgba(255,255,255,0.06)',
+  text: '#F1F5F9',
   textMuted: '#94A3B8',
-  danger: '#EF4444',
-  dangerLight: '#F87171',
+  danger: '#FF3B3B',
+  dangerLight: '#FF6B6B',
   warning: '#F59E0B',
-  info: '#0EA5E9',
+  info: '#00C2FF',
   success: '#10B981',
   purple: '#A78BFA',
 };

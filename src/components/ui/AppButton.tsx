@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   TouchableOpacity,
   StyleSheet,
@@ -6,6 +6,8 @@ import {
   ViewStyle,
   TextStyle,
   StyleProp,
+  Animated,
+  Pressable,
 } from 'react-native';
 import { AppText } from './AppText';
 import { useTheme } from '../../theme/useTheme';
@@ -32,6 +34,14 @@ export function AppButton({
   textStyle,
 }: Props) {
   const { darkMode, colors } = useTheme();
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, speed: 50, bounciness: 4 }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
+  };
 
   const textColor: Record<ButtonVariant, string> = {
     primary: '#0A0F1C',
@@ -45,33 +55,36 @@ export function AppButton({
   const invertedBg = darkMode ? '#FFFFFF' : colors.surface;
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      onPress={onPress}
-      disabled={disabled || loading}
-      style={[
-        styles.button,
-        styles[variant],
-        variant === 'outlined' && { borderColor: outlinedBorder },
-        variant === 'inverted' && { backgroundColor: invertedBg },
-        (disabled || loading) && styles.disabled,
-        style,
-      ]}
-    >
-      {loading ? (
-        <ActivityIndicator color={textColor[variant]} />
-      ) : (
-        <AppText
-          style={[
-            styles.text,
-            { color: textColor[variant] },
-            textStyle,
-          ]}
-        >
-          {title}
-        </AppText>
-      )}
-    </TouchableOpacity>
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={disabled || loading}
+        style={[
+          styles.button,
+          styles[variant],
+          variant === 'outlined' && { borderColor: outlinedBorder },
+          variant === 'inverted' && { backgroundColor: invertedBg },
+          (disabled || loading) && styles.disabled,
+          style,
+        ]}
+      >
+        {loading ? (
+          <ActivityIndicator color={textColor[variant]} />
+        ) : (
+          <AppText
+            style={[
+              styles.text,
+              { color: textColor[variant] },
+              textStyle,
+            ]}
+          >
+            {title}
+          </AppText>
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -79,7 +92,7 @@ const styles = StyleSheet.create({
   button: {
     width: '100%',
     height: 56,
-    borderRadius: 16,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -105,6 +118,6 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 16,
     fontWeight: '700',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
 });

@@ -39,7 +39,7 @@ const DEVICE_ICONS: Record<DeviceType, string> = {
   motion: "radio-outline",
 };
 const DEVICE_COLORS: Record<DeviceType, string> = {
-  watch: "#0EA5E9",
+  watch: "#00C2FF",
   gas: "#F59E0B",
   motion: "#8B5CF6",
 };

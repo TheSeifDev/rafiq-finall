@@ -1,6 +1,11 @@
 import { TextStyle } from 'react-native';
 
 export const typography = {
+  display: {
+    fontSize: 32,
+    fontWeight: '800' as TextStyle['fontWeight'],
+    lineHeight: 40,
+  },
   h1: {
     fontSize: 28,
     fontWeight: '700' as TextStyle['fontWeight'],

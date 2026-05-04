@@ -13,13 +13,15 @@ interface ScreenHeaderProps {
 
 export function ScreenHeader({ title, onBack, rightContent }: ScreenHeaderProps): React.JSX.Element {
   const { colors, darkMode } = useTheme();
+  const borderColor = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const backBg = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
 
   return (
-    <View style={[styles.header, { borderBottomColor: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
+    <View style={[styles.header, { borderBottomColor: borderColor }]}>
       <TouchableOpacity
         onPress={onBack}
         activeOpacity={0.6}
-        style={[styles.backBtn, { backgroundColor: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}
+        style={[styles.backBtn, { backgroundColor: backBg }]}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
@@ -39,13 +41,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     gap: spacing.sm,
   },
   backBtn: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -57,10 +59,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   rightSlot: {
-    width: 36,
+    width: 38,
     alignItems: 'center',
   },
   spacer: {
-    width: 36,
+    width: 38,
   },
 });

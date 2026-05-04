@@ -51,7 +51,7 @@ export function WelcomeScreen({ navigation }: Props): React.JSX.Element {
             <AppText style={[styles.brand, { color: colors.textPrimary }]}>
               {t.appName}
             </AppText>
-            <View style={[styles.accentDivider, { backgroundColor: colors.danger }]} />
+            <View style={[styles.accentDivider, { backgroundColor: colors.primary }]} />
             <AppText style={[styles.tagline, { color: mutedText }]}>
               {t.welcomeSubtitle}
             </AppText>

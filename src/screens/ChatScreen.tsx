@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   FlatList,
   View,
@@ -9,300 +9,554 @@ import {
   Platform,
   ActivityIndicator,
   Image,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText } from '../components/ui/AppText';
-import { Screen } from '../components/ui/Screen';
-import { AppInput } from '../components/ui/AppInput';
-import { useLocale } from '../hooks/useLocale';
-import { sendChat, type ChatMessage } from '../services/chat.service';
+  Animated,
+  useWindowDimensions,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { AppText } from "../components/ui/AppText";
+import { Screen } from "../components/ui/Screen";
+import { AppInput } from "../components/ui/AppInput";
+import { useLocale } from "../hooks/useLocale";
+import { sendChat, type ChatMessage } from "../services/chat.service";
+import { useTheme } from "../theme/useTheme";
 
-const C = {
-  bg: '#0B1120',
-  card: '#151E2E',
-  cardBorder: '#1E293B',
-  primary: '#06B6D4',
-  primarySoft: 'rgba(6,182,212,0.15)',
-  text: '#F1F5F9',
-  textMuted: '#94A3B8',
-  userBubble: '#06B6D4',
-  assistantBubble: '#1E293B',
-  success: '#10B981',
-  danger: '#EF4444',
-  warning: '#F59E0B',
-  purple: '#8B5CF6',
-};
+/* ── Palette derived from design system ── */
+const palette = (dark: boolean) => ({
+  bg: dark ? "#0A0F1C" : "#F5F7FA",
+  surface: dark ? "#111827" : "#FFFFFF",
+  card: dark ? "#1A2332" : "#FFFFFF",
+  cardBorder: dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+  primary: "#00C2FF",
+  primarySoft: dark ? "rgba(0,194,255,0.12)" : "rgba(0,194,255,0.08)",
+  secondary: "#1E3A8A",
+  text: dark ? "#F1F5F9" : "#1E293B",
+  textMuted: dark ? "#94A3B8" : "#64748B",
+  userBubbleStart: "#00C2FF",
+  userBubbleEnd: "#1E3A8A",
+  assistantBubble: dark ? "rgba(17,24,39,0.85)" : "rgba(241,245,249,0.95)",
+  assistantBorder: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+  success: "#10B981",
+  danger: "#FF3B3B",
+  warning: "#F59E0B",
+  purple: "#A855F7",
+  inputBg: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
+  inputBorder: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
+});
 
-type QuickAction = { icon: string; label: string; color: string; bg: string };
-type Suggestion = { icon: string; label: string; color: string; bg: string };
-type Service = { icon: string; label: string; color: string; bg: string; borderColor: string };
+/* ── Typing dots animation ── */
+function TypingDots({ color }: { color: string }) {
+  const dots = [
+    useRef(new Animated.Value(0.3)).current,
+    useRef(new Animated.Value(0.3)).current,
+    useRef(new Animated.Value(0.3)).current,
+  ];
+  useEffect(() => {
+    const anims = dots.map((dot, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 180),
+          Animated.timing(dot, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(dot, {
+            toValue: 0.3,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]),
+      ),
+    );
+    anims.forEach((a) => a.start());
+    return () => anims.forEach((a) => a.stop());
+  }, []);
+
+  return (
+    <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
+      {dots.map((opacity, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: 4,
+            backgroundColor: color,
+            opacity,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+/* ── Message entrance animation wrapper ── */
+function AnimatedMessage({ children }: { children: React.ReactNode }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(10)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        speed: 20,
+        bounciness: 4,
+      }),
+    ]).start();
+  }, []);
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+type QuickAction = { icon: string; label: string; color: string };
+type Suggestion = { icon: string; label: string; color: string };
+type Service = { icon: string; label: string; color: string };
 
 export function ChatScreen(): React.JSX.Element {
   const { t, isRTL } = useLocale();
+  const { darkMode } = useTheme();
+  const C = palette(darkMode);
+  const { width: screenW } = useWindowDimensions();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [text, setText] = useState('');
+  const [text, setText] = useState("");
   const [typing, setTyping] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const quickActions: QuickAction[] = [
-    { icon: 'chatbubble-ellipses', label: t('aiChat'), color: C.primary, bg: C.primarySoft },
-    { icon: 'search', label: t('diseases'), color: C.textMuted, bg: 'rgba(148,163,184,0.1)' },
-    { icon: 'help-circle', label: t('faq'), color: C.textMuted, bg: 'rgba(148,163,184,0.1)' },
-    { icon: 'medical', label: t('emergency'), color: C.danger, bg: 'rgba(239,68,68,0.1)' },
+    { icon: "chatbubble-ellipses", label: t("aiChat"), color: C.primary },
+    { icon: "search", label: t("diseases"), color: C.textMuted },
+    { icon: "help-circle", label: t("faq"), color: C.textMuted },
+    { icon: "medical", label: t("emergency"), color: C.danger },
   ];
 
   const suggestions: Suggestion[] = [
-    { icon: 'medical', label: t('forgotMeds'), color: C.purple, bg: 'rgba(139,92,246,0.12)' },
-    { icon: 'heart', label: t('chestPain'), color: C.danger, bg: 'rgba(239,68,68,0.12)' },
-    { icon: 'thermometer', label: t('haveFever'), color: C.warning, bg: 'rgba(245,158,11,0.12)' },
-    { icon: 'bandage', label: t('haveWound'), color: C.primary, bg: C.primarySoft },
-    { icon: 'call', label: t('callEmergency'), color: C.success, bg: 'rgba(16,185,129,0.12)' },
+    { icon: "medical", label: t("forgotMeds"), color: C.purple },
+    { icon: "heart", label: t("chestPain"), color: C.danger },
+    { icon: "thermometer", label: t("haveFever"), color: C.warning },
+    { icon: "bandage", label: t("haveWound"), color: C.primary },
+    { icon: "call", label: t("callEmergency"), color: C.success },
   ];
 
   const services: Service[] = [
-    { icon: 'person', label: t('doctorConsult'), color: C.success, bg: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.2)' },
-    { icon: 'call', label: t('callAmbulance'), color: C.purple, bg: 'rgba(139,92,246,0.08)', borderColor: 'rgba(139,92,246,0.2)' },
-    { icon: 'location', label: t('shareLocation'), color: C.primary, bg: C.primarySoft, borderColor: 'rgba(6,182,212,0.2)' },
-    { icon: 'medical', label: t('firstAid'), color: C.danger, bg: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)' },
+    { icon: "person", label: t("doctorConsult"), color: C.success },
+    { icon: "call", label: t("callAmbulance"), color: C.purple },
+    { icon: "location", label: t("shareLocation"), color: C.primary },
+    { icon: "medical", label: t("firstAid"), color: C.danger },
   ];
 
   const quickReplies = [
-    t('drankLittleWater'),
-    t('headachePersistent'),
-    t('yesHaveFever'),
+    t("drankLittleWater"),
+    t("headachePersistent"),
+    t("yesHaveFever"),
   ];
 
-  const handleSend = useCallback(async (overrideText?: string) => {
-    const messageText = overrideText || text.trim();
-    if (!messageText) return;
+  const handleSend = useCallback(
+    async (overrideText?: string) => {
+      const messageText = overrideText || text.trim();
+      if (!messageText) return;
+      const userMessage: ChatMessage = { role: "user", content: messageText };
+      const nextMessages = [...messages, userMessage];
+      setMessages(nextMessages);
+      setText("");
+      setTyping(true);
+      try {
+        const reply = await sendChat(nextMessages, t("noVitals"));
+        setMessages((current) => [
+          ...current,
+          { role: "assistant", content: reply },
+        ]);
+      } catch {
+        setMessages((current) => [
+          ...current,
+          { role: "assistant", content: t("aiError") },
+        ]);
+      } finally {
+        setTyping(false);
+      }
+    },
+    [messages, text, t],
+  );
 
-    const userMessage: ChatMessage = { role: 'user', content: messageText };
-    const nextMessages = [...messages, userMessage];
-    setMessages(nextMessages);
-    setText('');
-    setTyping(true);
+  const suggestionW = Math.max(100, (screenW - 64) / 3.2);
 
-    try {
-      const reply = await sendChat(nextMessages, t('noVitals'));
-      setMessages((current) => [...current, { role: 'assistant', content: reply }]);
-    } catch {
-      setMessages((current) => [...current, { role: 'assistant', content: t('aiError') }]);
-    } finally {
-      setTyping(false);
-    }
-  }, [messages, text, t]);
-
-  const renderMessage = ({ item, index }: { item: ChatMessage; index: number }) => {
-    const isUser = item.role === 'user';
-    const showQuickReplies = !isUser && index === messages.length - 1 && !typing;
+  const renderMessage = ({
+    item,
+    index,
+  }: {
+    item: ChatMessage;
+    index: number;
+  }) => {
+    const isUser = item.role === "user";
+    const showQuickReplies =
+      !isUser && index === messages.length - 1 && !typing;
 
     return (
-      <View style={{ marginBottom: 12 }}>
-        <View style={[styles.messageRow, isRTL ? styles.rowReverse : styles.row, !isUser && styles.assistantRow]}>
-          {!isUser && (
-            <View style={styles.avatar}>
-              <Image
-                source={{ uri: 'https://cdn-icons-png.flaticon.com/512/4712/4712035.png' }}
-                style={styles.avatarImg}
-              />
-            </View>
-          )}
-          <View style={[
-            styles.bubble,
-            isUser ? styles.userBubble : styles.assistantBubble,
-            isRTL && isUser ? { borderTopRightRadius: 4 } : isRTL ? { borderTopLeftRadius: 4 } : isUser ? { borderTopLeftRadius: 4 } : { borderTopRightRadius: 4 }
-          ]}>
-            <AppText style={[styles.bubbleText, isUser ? styles.userText : styles.assistantText]}>
-              {item.content}
-            </AppText>
-          </View>
-        </View>
-
-        {showQuickReplies && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[styles.quickReplies, isRTL && styles.quickRepliesRTL]}
+      <AnimatedMessage>
+        <View style={{ marginBottom: 14 }}>
+          <View
+            style={[
+              styles.messageRow,
+              isRTL ? styles.rowReverse : styles.row,
+              !isUser && styles.assistantRow,
+            ]}
           >
-            {quickReplies.map((reply) => (
-              <TouchableOpacity
-                key={reply}
-                activeOpacity={0.85}
-                onPress={() => handleSend(reply)}
-                style={styles.quickReplyBtn}
+            {!isUser && (
+              <View style={[styles.avatar, { backgroundColor: C.primarySoft }]}>
+                <Image
+                  source={{
+                    uri: "https://cdn-icons-png.flaticon.com/512/4712/4712035.png",
+                  }}
+                  style={styles.avatarImg}
+                />
+              </View>
+            )}
+            <View
+              style={[
+                styles.bubble,
+                isUser
+                  ? [styles.userBubble, { backgroundColor: C.userBubbleStart }]
+                  : [
+                      styles.assistantBubble,
+                      {
+                        backgroundColor: C.assistantBubble,
+                        borderColor: C.assistantBorder,
+                      },
+                    ],
+                isRTL && isUser
+                  ? { borderTopRightRadius: 4 }
+                  : isRTL && !isUser
+                    ? { borderTopLeftRadius: 4 }
+                    : isUser
+                      ? { borderTopRightRadius: 4 }
+                      : { borderTopLeftRadius: 4 },
+              ]}
+            >
+              <AppText
+                style={[
+                  styles.bubbleText,
+                  isUser ? styles.userText : { color: C.text },
+                ]}
               >
-                <AppText style={styles.quickReplyText}>{reply}</AppText>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-      </View>
+                {item.content}
+              </AppText>
+            </View>
+          </View>
+
+          {showQuickReplies && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.quickReplies,
+                isRTL && styles.rowReverse,
+              ]}
+            >
+              {quickReplies.map((reply) => (
+                <TouchableOpacity
+                  key={reply}
+                  activeOpacity={0.7}
+                  onPress={() => handleSend(reply)}
+                  style={[
+                    styles.quickReplyBtn,
+                    {
+                      backgroundColor: C.primarySoft,
+                      borderColor: C.primary + "30",
+                    },
+                  ]}
+                >
+                  <AppText
+                    style={[styles.quickReplyText, { color: C.primary }]}
+                  >
+                    {reply}
+                  </AppText>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </AnimatedMessage>
     );
   };
 
   return (
     <Screen style={{ backgroundColor: C.bg }}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.flex}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
-        {/* Header */}
-        <View style={[styles.header, isRTL && styles.rowReverse]}>
-          <View style={styles.headerLeft}>
-            <View style={styles.avatarLarge}>
-              <Image
-                source={{ uri: 'https://cdn-icons-png.flaticon.com/512/4712/4712035.png' }}
-                style={styles.avatarLargeImg}
-              />
+        {/* ── Header ── */}
+        <View
+          style={[
+            styles.header,
+            { backgroundColor: C.surface, borderBottomColor: C.cardBorder },
+            isRTL && styles.rowReverse,
+          ]}
+        >
+          <View style={[styles.headerLeft, isRTL && styles.rowReverse]}>
+            <View
+              style={[styles.avatarLarge, { borderColor: C.primary + "40" }]}
+            >
+              <View
+                style={[
+                  styles.avatarLargeInner,
+                  { backgroundColor: C.primarySoft },
+                ]}
+              >
+                <Image
+                  source={{
+                    uri: "https://cdn-icons-png.flaticon.com/512/4712/4712035.png",
+                  }}
+                  style={styles.avatarLargeImg}
+                />
+              </View>
             </View>
             <View style={styles.headerText}>
-              <AppText variant="h2" style={[styles.headerTitle, isRTL && styles.textRight]}>{t('healthAssistant')}</AppText>
-              <AppText style={[styles.headerSubtitle, isRTL && styles.textRight]}>{t('howCanIHelp')}</AppText>
+              <AppText
+                style={[
+                  styles.headerTitle,
+                  { color: C.text },
+                  isRTL && styles.textRight,
+                ]}
+              >
+                {t("healthAssistant")}
+              </AppText>
               <View style={[styles.statusRow, isRTL && styles.rowReverse]}>
-                <View style={[styles.statusDot, { backgroundColor: C.success }]} />
-                <AppText style={styles.statusText}>{t('availableNow')}</AppText>
+                <View
+                  style={[styles.statusDot, { backgroundColor: C.success }]}
+                />
+                <AppText style={[styles.statusText, { color: C.success }]}>
+                  {t("availableNow")}
+                </AppText>
               </View>
             </View>
           </View>
-          <TouchableOpacity style={styles.bellBtn}>
-            <Ionicons name="notifications-outline" size={22} color={C.text} />
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={[
+              styles.bellBtn,
+              { backgroundColor: C.card, borderColor: C.cardBorder },
+            ]}
+          >
+            <Ionicons name="notifications-outline" size={20} color={C.text} />
           </TouchableOpacity>
         </View>
 
-        {/* Quick Actions */}
+        {/* ── Quick Actions ── */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[styles.quickActions, isRTL && styles.quickActionsRTL]}
+          contentContainerStyle={[
+            styles.quickActions,
+            isRTL && styles.rowReverse,
+          ]}
         >
           {quickActions.map((action, idx) => (
             <TouchableOpacity
               key={idx}
-              activeOpacity={0.85}
+              activeOpacity={0.7}
               style={[
                 styles.actionChip,
-                idx === 0 && { backgroundColor: C.primarySoft, borderColor: C.primary }
+                {
+                  backgroundColor: idx === 0 ? C.primarySoft : C.card,
+                  borderColor: idx === 0 ? C.primary + "40" : C.cardBorder,
+                },
               ]}
             >
-              <Ionicons name={action.icon as any} size={18} color={idx === 0 ? C.primary : action.color} />
-              <AppText style={[styles.actionChipText, idx === 0 && { color: C.primary }]}>{action.label}</AppText>
+              <Ionicons
+                name={action.icon as any}
+                size={16}
+                color={idx === 0 ? C.primary : action.color}
+              />
+              <AppText
+                style={[
+                  styles.actionChipText,
+                  { color: idx === 0 ? C.primary : C.textMuted },
+                ]}
+              >
+                {action.label}
+              </AppText>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        {/* Suggestions Header */}
+        {/* ── Suggestions (empty state) ── */}
         {messages.length === 0 && (
-          <View style={[styles.suggestionsHeader, isRTL && styles.rowReverse]}>
-            <AppText style={styles.suggestionsTitle}>{t('quickSuggestions')}</AppText>
-            <TouchableOpacity>
-              <AppText style={styles.seeAll}>{t('showAll')}</AppText>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Suggestions */}
-        {messages.length === 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[styles.suggestions, isRTL && styles.suggestionsRTL]}
-          >
-            {suggestions.map((s, idx) => (
-              <TouchableOpacity
-                key={idx}
-                activeOpacity={0.85}
-                onPress={() => handleSend(s.label)}
-                style={[styles.suggestionCard, { backgroundColor: s.bg, borderColor: s.color + '20' }]}
-              >
-                <View style={[styles.suggestionIcon, { backgroundColor: s.color + '18' }]}>
-                  <Ionicons name={s.icon as any} size={22} color={s.color} />
-                </View>
-                <AppText style={[styles.suggestionText, { color: C.text }]}>{s.label}</AppText>
+          <>
+            <View
+              style={[styles.suggestionsHeader, isRTL && styles.rowReverse]}
+            >
+              <AppText style={[styles.suggestionsTitle, { color: C.text }]}>
+                {t("quickSuggestions")}
+              </AppText>
+              <TouchableOpacity activeOpacity={0.7}>
+                <AppText style={[styles.seeAll, { color: C.primary }]}>
+                  {t("showAll")}
+                </AppText>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.suggestions,
+                isRTL && styles.rowReverse,
+              ]}
+            >
+              {suggestions.map((s, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  activeOpacity={0.7}
+                  onPress={() => handleSend(s.label)}
+                  style={[
+                    styles.suggestionCard,
+                    {
+                      width: suggestionW,
+                      backgroundColor: s.color + "0D",
+                      borderColor: s.color + "20",
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.suggestionIcon,
+                      { backgroundColor: s.color + "18" },
+                    ]}
+                  >
+                    <Ionicons name={s.icon as any} size={22} color={s.color} />
+                  </View>
+                  <AppText
+                    style={[styles.suggestionText, { color: C.text }]}
+                    numberOfLines={2}
+                  >
+                    {s.label}
+                  </AppText>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
         )}
 
-        {/* Messages */}
+        {/* ── Messages ── */}
         <FlatList
           ref={flatListRef}
           data={messages}
           keyExtractor={(_, index) => String(index)}
           contentContainerStyle={styles.messagesList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          onContentSizeChange={() =>
+            flatListRef.current?.scrollToEnd({ animated: true })
+          }
           renderItem={renderMessage}
           ListEmptyComponent={
             <View style={styles.emptyChat}>
-              <AppText style={styles.emptyText}>{t('startChat')}</AppText>
+              <View
+                style={[styles.emptyIcon, { backgroundColor: C.primarySoft }]}
+              >
+                <Ionicons
+                  name="chatbubbles-outline"
+                  size={32}
+                  color={C.primary}
+                />
+              </View>
+              <AppText style={[styles.emptyTitle, { color: C.text }]}>
+                {t("startChat")}
+              </AppText>
+              <AppText style={[styles.emptySubtext, { color: C.textMuted }]}>
+                {t("howCanIHelp")}
+              </AppText>
             </View>
           }
         />
 
-        {/* Typing Indicator */}
+        {/* ── Typing Indicator ── */}
         {typing && (
           <View style={[styles.typingRow, isRTL && styles.rowReverse]}>
-            <View style={styles.avatarSmall}>
+            <View
+              style={[styles.avatarSmall, { backgroundColor: C.primarySoft }]}
+            >
               <Image
-                source={{ uri: 'https://cdn-icons-png.flaticon.com/512/4712/4712035.png' }}
+                source={{
+                  uri: "https://cdn-icons-png.flaticon.com/512/4712/4712035.png",
+                }}
                 style={styles.avatarSmallImg}
               />
             </View>
-            <View style={styles.typingBubble}>
-              <ActivityIndicator color={C.primary} size="small" />
-              <AppText style={styles.typingText}>{t('rafeeqTyping')}</AppText>
+            <View
+              style={[
+                styles.typingBubble,
+                {
+                  backgroundColor: C.assistantBubble,
+                  borderColor: C.assistantBorder,
+                },
+              ]}
+            >
+              <TypingDots color={C.primary} />
+              <AppText style={[styles.typingText, { color: C.textMuted }]}>
+                {t("rafeeqTyping")}
+              </AppText>
             </View>
           </View>
         )}
 
-        {/* Input Bar */}
-        <View style={[styles.inputBar, isRTL && styles.rowReverse]}>
-          <TouchableOpacity style={styles.inputIconBtn}>
-            <Ionicons name="add" size={24} color={C.textMuted} />
+        {/* ── Input Composer ── */}
+        <View
+          style={[
+            styles.inputBar,
+            { backgroundColor: C.surface, borderTopColor: C.cardBorder },
+            isRTL && styles.rowReverse,
+          ]}
+        >
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={[
+              styles.inputIconBtn,
+              { backgroundColor: C.inputBg, borderColor: C.inputBorder },
+            ]}
+          >
+            <Ionicons name="add" size={22} color={C.textMuted} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.inputIconBtn}>
-            <Ionicons name="mic-outline" size={22} color={C.textMuted} />
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={[
+              styles.inputIconBtn,
+              { backgroundColor: C.inputBg, borderColor: C.inputBorder },
+            ]}
+          >
+            <Ionicons name="mic-outline" size={20} color={C.textMuted} />
           </TouchableOpacity>
           <View style={styles.inputWrap}>
             <AppInput
               value={text}
               onChangeText={setText}
-              placeholder={t('typeMessage')}
+              placeholder={t("typeMessage")}
               placeholderTextColor={C.textMuted}
             />
           </View>
           <TouchableOpacity
-            activeOpacity={0.85}
+            activeOpacity={0.8}
             onPress={() => handleSend()}
             disabled={!text.trim()}
-            style={[styles.sendBtn, { opacity: text.trim() ? 1 : 0.5 }]}
+            style={[
+              styles.sendBtn,
+              { backgroundColor: C.primary, opacity: text.trim() ? 1 : 0.4 },
+              text.trim() ? styles.sendBtnGlow : null,
+            ]}
           >
-            <Ionicons name="send" size={20} color="#fff" style={{ transform: [{ rotate: isRTL ? '180deg' : '0deg' }] }} />
+            <Ionicons
+              name="send"
+              size={18}
+              color="#fff"
+              style={{ transform: [{ rotate: isRTL ? "180deg" : "0deg" }] }}
+            />
           </TouchableOpacity>
-        </View>
-
-        {/* Quick Services */}
-        <View style={styles.servicesSection}>
-          <View style={[styles.servicesHeader, isRTL && styles.rowReverse]}>
-            <AppText style={styles.servicesTitle}>{t('quickServices')}</AppText>
-            <TouchableOpacity>
-              <AppText style={styles.seeAll}>{t('showAll')}</AppText>
-            </TouchableOpacity>
-          </View>
-          <View style={[styles.servicesGrid, isRTL && styles.rowReverse]}>
-            {services.map((service, idx) => (
-              <TouchableOpacity
-                key={idx}
-                activeOpacity={0.85}
-                style={[styles.serviceCard, { backgroundColor: service.bg, borderColor: service.borderColor }]}
-              >
-                <View style={[styles.serviceIcon, { backgroundColor: service.color + '18' }]}>
-                  <Ionicons name={service.icon as any} size={20} color={service.color} />
-                </View>
-                <AppText style={[styles.serviceText, { color: C.text }]}>{service.label}</AppText>
-              </TouchableOpacity>
-            ))}
-          </View>
         </View>
       </KeyboardAvoidingView>
     </Screen>
@@ -311,351 +565,243 @@ export function ChatScreen(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  rowReverse: { flexDirection: 'row-reverse' },
-  row: { flexDirection: 'row' },
-  textRight: { textAlign: 'right' },
+  rowReverse: { flexDirection: "row-reverse" },
+  row: { flexDirection: "row" },
+  textRight: { textAlign: "right" },
 
+  /* ── Header ── */
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 8,
+    paddingBottom: 12,
     gap: 12,
+    borderBottomWidth: 1,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
   avatarLarge: {
-    width: 56,
-    height: 56,
-    borderRadius: 20,
-    backgroundColor: C.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 48,
+    height: 48,
+    borderRadius: 16,
     borderWidth: 2,
-    borderColor: C.primary + '30',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  avatarLargeImg: {
-    width: 44,
-    height: 44,
-    resizeMode: 'contain',
+  avatarLargeInner: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  headerText: {
-    flex: 1,
-    gap: 2,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: C.text,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: C.textMuted,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 2,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusText: {
-    fontSize: 12,
-    color: C.success,
-    fontWeight: '700',
-  },
+  avatarLargeImg: { width: 30, height: 30, resizeMode: "contain" },
+  headerText: { flex: 1, gap: 2 },
+  headerTitle: { fontSize: 18, fontWeight: "700" },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusText: { fontSize: 11, fontWeight: "600" },
   bellBtn: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: 14,
-    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: C.cardBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  quickActions: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  quickActionsRTL: {
-    flexDirection: 'row-reverse',
-  },
+  /* ── Quick Actions ── */
+  quickActions: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
   actionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: C.card,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: C.cardBorder,
+    minHeight: 44,
   },
-  actionChipText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: C.textMuted,
-  },
+  actionChipText: { fontSize: 13, fontWeight: "600" },
 
+  /* ── Suggestions ── */
   suggestionsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     marginTop: 4,
     marginBottom: 10,
   },
-  suggestionsTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: C.text,
-  },
-  seeAll: {
-    fontSize: 13,
-    color: C.primary,
-    fontWeight: '700',
-  },
-  suggestions: {
-    paddingHorizontal: 16,
-    gap: 10,
-    paddingBottom: 8,
-  },
-  suggestionsRTL: {
-    flexDirection: 'row-reverse',
-  },
+  suggestionsTitle: { fontSize: 15, fontWeight: "700" },
+  seeAll: { fontSize: 13, fontWeight: "600" },
+  suggestions: { paddingHorizontal: 16, gap: 10, paddingBottom: 8 },
   suggestionCard: {
-    width: 100,
     borderRadius: 18,
     padding: 14,
-    alignItems: 'center',
-    gap: 8,
+    alignItems: "center",
+    gap: 10,
     borderWidth: 1,
   },
   suggestionIcon: {
     width: 44,
     height: 44,
     borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   suggestionText: {
     fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'center',
+    fontWeight: "600",
+    textAlign: "center",
     lineHeight: 18,
   },
 
-  messagesList: {
-    padding: 16,
-    paddingBottom: 8,
-    gap: 4,
-  },
+  /* ── Messages ── */
+  messagesList: { padding: 16, paddingBottom: 8, flexGrow: 1 },
   emptyChat: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 48,
+    gap: 12,
   },
-  emptyText: {
-    color: C.textMuted,
-    fontSize: 14,
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
   },
+  emptyTitle: { fontSize: 16, fontWeight: "700" },
+  emptySubtext: { fontSize: 13, fontWeight: "500" },
 
-  messageRow: {
-    alignItems: 'flex-end',
-    gap: 8,
-  },
-  assistantRow: {
-    alignItems: 'flex-start',
-  },
+  messageRow: { alignItems: "flex-end", gap: 8 },
+  assistantRow: { alignItems: "flex-start" },
   avatar: {
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
     borderRadius: 10,
-    backgroundColor: C.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  avatarImg: {
-    width: 24,
-    height: 24,
-    resizeMode: 'contain',
-  },
+  avatarImg: { width: 22, height: 22, resizeMode: "contain" },
   bubble: {
-    maxWidth: '78%',
-    padding: 14,
-    borderRadius: 18,
-  },
-  userBubble: {
-    backgroundColor: C.userBubble,
-    borderTopRightRadius: 4,
-  },
-  assistantBubble: {
-    backgroundColor: C.assistantBubble,
-    borderTopLeftRadius: 4,
-  },
-  bubbleText: {
-    fontSize: 14,
-    lineHeight: 22,
-  },
-  userText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  assistantText: {
-    color: C.text,
-    fontWeight: '500',
-  },
-
-  quickReplies: {
+    maxWidth: "78%",
     paddingHorizontal: 16,
-    paddingTop: 10,
-    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 20,
   },
-  quickRepliesRTL: {
-    flexDirection: 'row-reverse',
-  },
-  quickReplyBtn: {
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.cardBorder,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  quickReplyText: {
-    fontSize: 13,
-    color: C.text,
-    fontWeight: '600',
-  },
+  userBubble: { borderTopRightRadius: 4 },
+  assistantBubble: { borderTopLeftRadius: 4, borderWidth: 1 },
+  bubbleText: { fontSize: 14, lineHeight: 22 },
+  userText: { color: "#fff", fontWeight: "500" },
 
+  /* ── Quick Replies ── */
+  quickReplies: { paddingHorizontal: 48, paddingTop: 8, gap: 8 },
+  quickReplyBtn: {
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+  },
+  quickReplyText: { fontSize: 13, fontWeight: "600" },
+
+  /* ── Typing ── */
   typingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     paddingHorizontal: 16,
     marginBottom: 8,
   },
   avatarSmall: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: C.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 26,
+    height: 26,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  avatarSmallImg: {
-    width: 20,
-    height: 20,
-    resizeMode: 'contain',
-  },
+  avatarSmallImg: { width: 18, height: 18, resizeMode: "contain" },
   typingBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: C.assistantBubble,
-    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 14,
+    borderRadius: 16,
+    borderWidth: 1,
   },
-  typingText: {
-    fontSize: 13,
-    color: C.textMuted,
-    fontWeight: '600',
-  },
+  typingText: { fontSize: 12, fontWeight: "600" },
 
+  /* ── Input Composer ── */
   inputBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: C.card,
     borderTopWidth: 1,
-    borderTopColor: C.cardBorder,
   },
   inputIconBtn: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: 12,
-    backgroundColor: '#0F172A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inputWrap: {
-    flex: 1,
-  },
-  input: {
-    backgroundColor: '#0F172A',
-    borderRadius: 14,
     borderWidth: 1,
-    borderColor: C.cardBorder,
-    height: 44,
-    paddingHorizontal: 14,
-    color: C.text,
-    fontSize: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  inputWrap: { flex: 1 },
   sendBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: C.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendBtnGlow: {
+    shadowColor: "#00C2FF",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 6,
   },
 
+  /* ── Services (2×2) ── */
   servicesSection: {
-    padding: 12,
-    backgroundColor: C.bg,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: C.cardBorder,
   },
   servicesHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 10,
     paddingHorizontal: 4,
   },
-  servicesTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: C.text,
-  },
-  servicesGrid: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  servicesTitle: { fontSize: 14, fontWeight: "700" },
+  servicesGrid: { gap: 8 },
+  servicesRow: { flexDirection: "row", gap: 8 },
   serviceCard: {
     flex: 1,
     borderRadius: 16,
-    padding: 12,
-    alignItems: 'center',
-    gap: 6,
+    padding: 14,
+    alignItems: "center",
+    gap: 8,
     borderWidth: 1,
   },
   serviceIcon: {
     width: 40,
     height: 40,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   serviceText: {
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'center',
-    lineHeight: 16,
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+    lineHeight: 17,
   },
 });

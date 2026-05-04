@@ -5,7 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -30,36 +30,46 @@ type Props = CompositeScreenProps<
   NativeStackScreenProps<MainStackParamList>
 >;
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
+/* ── Design tokens aligned with prescribed palette ── */
+const brandColors = {
+  primary: '#00C2FF',
+  secondary: '#1E3A8A',
+  danger: '#FF3B3B',
+  success: '#10B981',
+  warning: '#F59E0B',
+  heart: '#FF3B3B',
+  bp: '#00C2FF',
+  spo2: '#10B981',
+  temp: '#F59E0B',
+};
 
 // ── Mini sparkline chart component ──
 function MiniChart({
   data,
   color,
   height = 48,
-  width: chartWidth = SCREEN_WIDTH * 0.35,
+  width: chartWidth,
 }: {
   data: number[];
   color: string;
   height?: number;
   width?: number;
 }) {
+  const { width: screenW } = useWindowDimensions();
+  const w = chartWidth ?? screenW * 0.35;
   if (data.length < 2) return null;
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
-  const step = chartWidth / (data.length - 1);
+  const step = w / (data.length - 1);
 
   const points = data.map((v, i) => ({
     x: i * step,
     y: height - ((v - min) / range) * (height - 8) - 4,
   }));
 
-  // Build SVG-like path with View-based rendering
   return (
-    <View style={{ height, width: chartWidth, position: 'relative' }}>
-      {/* Gradient fill area */}
+    <View style={{ height, width: w, position: 'relative' }}>
       {points.map((p, i) => {
         if (i === 0) return null;
         const prev = points[i - 1];
@@ -68,11 +78,8 @@ function MiniChart({
           <View
             key={i}
             style={{
-              position: 'absolute',
-              left: prev.x,
-              bottom: 0,
-              width: step,
-              height: barHeight,
+              position: 'absolute', left: prev.x, bottom: 0,
+              width: step, height: barHeight,
               backgroundColor: color + '08',
               borderTopLeftRadius: i === 1 ? 4 : 0,
               borderTopRightRadius: i === data.length - 1 ? 4 : 0,
@@ -80,7 +87,6 @@ function MiniChart({
           />
         );
       })}
-      {/* Line segments */}
       {points.map((p, i) => {
         if (i === 0) return null;
         const prev = points[i - 1];
@@ -92,33 +98,21 @@ function MiniChart({
           <View
             key={`l${i}`}
             style={{
-              position: 'absolute',
-              left: prev.x,
-              top: prev.y,
-              width: len,
-              height: 2.5,
-              backgroundColor: color,
-              borderRadius: 1.25,
-              transform: [{ rotate: `${angle}deg` }],
+              position: 'absolute', left: prev.x, top: prev.y,
+              width: len, height: 2.5, backgroundColor: color,
+              borderRadius: 1.25, transform: [{ rotate: `${angle}deg` }],
               transformOrigin: 'left center',
             }}
           />
         );
       })}
-      {/* Data points */}
       {points.map((p, i) => (
         <View
           key={`d${i}`}
           style={{
-            position: 'absolute',
-            left: p.x - 3,
-            top: p.y - 3,
-            width: 6,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: color,
-            borderWidth: 1.5,
-            borderColor: '#fff',
+            position: 'absolute', left: p.x - 3, top: p.y - 3,
+            width: 6, height: 6, borderRadius: 3,
+            backgroundColor: color, borderWidth: 1.5, borderColor: '#fff',
           }}
         />
       ))}
@@ -128,24 +122,15 @@ function MiniChart({
 
 // ── Health metric card ──
 function MetricCard({
-  icon,
-  label,
-  value,
-  unit,
-  color,
-  darkMode,
-  surfaceColor,
+  icon, label, value, unit, color, darkMode, surfaceColor,
 }: {
-  icon: string;
-  label: string;
-  value: string;
-  unit: string;
-  color: string;
-  darkMode: boolean;
-  surfaceColor: string;
+  icon: string; label: string; value: string; unit: string;
+  color: string; darkMode: boolean; surfaceColor: string;
 }) {
+  const { width: screenW } = useWindowDimensions();
+  const cardW = (screenW - spacing.lg * 2 - spacing.sm) / 2;
   return (
-    <View style={[styles.metricCard, { backgroundColor: surfaceColor }]}>
+    <View style={[styles.metricCard, { backgroundColor: surfaceColor, width: cardW }]}>
       <View style={[styles.metricIconWrap, { backgroundColor: color + '15' }]}>
         <Ionicons name={icon as any} size={20} color={color} />
       </View>
@@ -166,25 +151,18 @@ function MetricCard({
 
 // ── Quick action button ──
 function QuickAction({
-  icon,
-  label,
-  color,
-  onPress,
-  darkMode,
-  surfaceColor,
+  icon, label, color, onPress, darkMode, surfaceColor,
 }: {
-  icon: string;
-  label: string;
-  color: string;
-  onPress: () => void;
-  darkMode: boolean;
-  surfaceColor: string;
+  icon: string; label: string; color: string; onPress: () => void;
+  darkMode: boolean; surfaceColor: string;
 }) {
+  const { width: screenW } = useWindowDimensions();
+  const actionW = (screenW - spacing.lg * 2 - spacing.sm * 3) / 4;
   return (
     <TouchableOpacity
       activeOpacity={0.7}
       onPress={onPress}
-      style={[styles.quickAction, { backgroundColor: surfaceColor }]}
+      style={[styles.quickAction, { backgroundColor: surfaceColor, width: actionW }]}
     >
       <View style={[styles.quickIconWrap, { backgroundColor: color + '12' }]}>
         <Ionicons name={icon as any} size={22} color={color} />
@@ -197,19 +175,11 @@ function QuickAction({
 }
 
 // ── Medication row ──
-function MedRow({
-  med,
-  darkMode,
-  colors,
-}: {
-  med: Medication;
-  darkMode: boolean;
-  colors: any;
-}) {
+function MedRow({ med, darkMode, colors }: { med: Medication; darkMode: boolean; colors: any }) {
   const timeLabel = med.time_of_day?.join(', ') ?? '';
   return (
     <View style={[styles.medRow, { borderBottomColor: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
-      <View style={[styles.medDot, { backgroundColor: colors.success }]} />
+      <View style={[styles.medDot, { backgroundColor: brandColors.success }]} />
       <View style={styles.medInfo}>
         <AppText style={[styles.medName, { color: colors.textPrimary }]}>{med.name}</AppText>
         <AppText style={[styles.medDose, { color: colors.textSecondary }]}>
@@ -217,29 +187,20 @@ function MedRow({
         </AppText>
       </View>
       {timeLabel ? (
-        <View style={[styles.medTimeBadge, { backgroundColor: colors.primary + '12' }]}>
-          <AppText style={[styles.medTimeText, { color: colors.primary }]}>{timeLabel}</AppText>
+        <View style={[styles.medTimeBadge, { backgroundColor: brandColors.primary + '12' }]}>
+          <AppText style={[styles.medTimeText, { color: brandColors.primary }]}>{timeLabel}</AppText>
         </View>
       ) : null}
     </View>
   );
 }
 
-// ── Weekly trend card (analytics-powered) ──
+// ── Weekly trend card ──
 function WeeklyTrendCard({
-  language,
-  darkMode,
-  surfaceColor,
-  cardBorder,
-  colors,
-  t,
+  language, darkMode, surfaceColor, cardBorder, colors, t,
 }: {
-  language: string;
-  darkMode: boolean;
-  surfaceColor: string;
-  cardBorder: string;
-  colors: any;
-  t: any;
+  language: string; darkMode: boolean; surfaceColor: string;
+  cardBorder: string; colors: any; t: any;
 }) {
   const week = useMemo(() => {
     const isAr = language === 'ar';
@@ -250,18 +211,16 @@ function WeeklyTrendCard({
   const hrData = week.days.map((d) => d.hr);
   const bpData = week.days.map((d) => d.sys);
   const dayNames = week.days.map((d) => d.day);
-
   const mutedColor = darkMode ? '#64748B' : '#94A3B8';
 
   return (
     <View style={[styles.chartCard, { backgroundColor: surfaceColor, borderColor: cardBorder }]}>
-      {/* Stats summary */}
       <View style={styles.trendStatsRow}>
         <View style={styles.trendStat}>
           <AppText style={[styles.trendStatLabel, { color: mutedColor }]}>
             {language === 'ar' ? 'المتوسط' : 'Avg'}
           </AppText>
-          <AppText style={[styles.trendStatVal, { color: '#EF4444' }]}>{week.hr.avg}</AppText>
+          <AppText style={[styles.trendStatVal, { color: brandColors.heart }]}>{week.hr.avg}</AppText>
           <AppText style={[styles.trendStatUnit, { color: mutedColor }]}>{t.bpm}</AppText>
         </View>
         <View style={[styles.trendStatDiv, { backgroundColor: cardBorder }]} />
@@ -269,7 +228,7 @@ function WeeklyTrendCard({
           <AppText style={[styles.trendStatLabel, { color: mutedColor }]}>
             {language === 'ar' ? 'الأعلى' : 'High'}
           </AppText>
-          <AppText style={[styles.trendStatVal, { color: '#F59E0B' }]}>{week.hr.max}</AppText>
+          <AppText style={[styles.trendStatVal, { color: brandColors.warning }]}>{week.hr.max}</AppText>
           <AppText style={[styles.trendStatUnit, { color: mutedColor }]}>{t.bpm}</AppText>
         </View>
         <View style={[styles.trendStatDiv, { backgroundColor: cardBorder }]} />
@@ -277,40 +236,32 @@ function WeeklyTrendCard({
           <AppText style={[styles.trendStatLabel, { color: mutedColor }]}>
             {language === 'ar' ? 'الأدنى' : 'Low'}
           </AppText>
-          <AppText style={[styles.trendStatVal, { color: '#10B981' }]}>{week.hr.min}</AppText>
+          <AppText style={[styles.trendStatVal, { color: brandColors.success }]}>{week.hr.min}</AppText>
           <AppText style={[styles.trendStatUnit, { color: mutedColor }]}>{t.bpm}</AppText>
         </View>
       </View>
 
-      {/* Sparklines */}
       <View style={styles.chartRow}>
         <View style={styles.chartCol}>
           <View style={styles.chartLabelRow}>
-            <View style={[styles.chartDot, { backgroundColor: '#EF4444' }]} />
-            <AppText style={[styles.chartLabel, { color: colors.textSecondary }]}>
-              {t.heartRate}
-            </AppText>
+            <View style={[styles.chartDot, { backgroundColor: brandColors.heart }]} />
+            <AppText style={[styles.chartLabel, { color: colors.textSecondary }]}>{t.heartRate}</AppText>
           </View>
-          <MiniChart data={hrData} color="#EF4444" />
+          <MiniChart data={hrData} color={brandColors.heart} />
         </View>
         <View style={styles.chartDivider} />
         <View style={styles.chartCol}>
           <View style={styles.chartLabelRow}>
-            <View style={[styles.chartDot, { backgroundColor: '#0077C8' }]} />
-            <AppText style={[styles.chartLabel, { color: colors.textSecondary }]}>
-              {t.bloodPressure}
-            </AppText>
+            <View style={[styles.chartDot, { backgroundColor: brandColors.bp }]} />
+            <AppText style={[styles.chartLabel, { color: colors.textSecondary }]}>{t.bloodPressure}</AppText>
           </View>
-          <MiniChart data={bpData} color="#0077C8" />
+          <MiniChart data={bpData} color={brandColors.bp} />
         </View>
       </View>
 
-      {/* Day labels */}
       <View style={styles.chartDays}>
         {dayNames.map((d, i) => (
-          <AppText key={`${d}-${i}`} style={[styles.chartDayText, { color: colors.textSecondary }]}>
-            {d}
-          </AppText>
+          <AppText key={`${d}-${i}`} style={[styles.chartDayText, { color: colors.textSecondary }]}>{d}</AppText>
         ))}
       </View>
     </View>
@@ -360,7 +311,6 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
     setRefreshing(false);
   };
 
-  // Greeting based on time of day
   const greetingText = useMemo(() => {
     const hour = new Date().getHours();
     if (language === 'ar') {
@@ -381,7 +331,7 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
     return d.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
   }, [language]);
 
-  const surfaceColor = darkMode ? 'rgba(30, 41, 59, 0.80)' : 'rgba(255, 255, 255, 0.90)';
+  const surfaceColor = darkMode ? 'rgba(26, 35, 50, 0.85)' : 'rgba(255, 255, 255, 0.92)';
   const cardBorder = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
 
   return (
@@ -390,7 +340,7 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={brandColors.primary} />
         }
       >
         {/* ── HEADER ── */}
@@ -424,121 +374,39 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
 
         {/* ── HEALTH SUMMARY ── */}
         <View style={styles.section}>
-          <AppText style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-            {t.healthSummary}
-          </AppText>
+          <AppText style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t.healthSummary}</AppText>
           <View style={styles.metricsGrid}>
-            <MetricCard
-              icon="heart"
-              label={t.heartRate}
-              value={latestVitals?.heart_rate?.toString() ?? '--'}
-              unit={t.bpm}
-              color="#EF4444"
-              darkMode={darkMode}
-              surfaceColor={surfaceColor}
-            />
-            <MetricCard
-              icon="fitness"
-              label={t.bloodPressure}
-              value={
-                latestVitals?.blood_pressure_systolic
-                  ? `${latestVitals.blood_pressure_systolic}/${latestVitals.blood_pressure_diastolic}`
-                  : '--/--'
-              }
-              unit="mmHg"
-              color="#0077C8"
-              darkMode={darkMode}
-              surfaceColor={surfaceColor}
-            />
-            <MetricCard
-              icon="water"
-              label={t.oxygenSaturation}
-              value={latestVitals?.oxygen_saturation?.toString() ?? '--'}
-              unit="%"
-              color="#10B981"
-              darkMode={darkMode}
-              surfaceColor={surfaceColor}
-            />
-            <MetricCard
-              icon="thermometer"
-              label={t.temperature}
-              value={latestVitals?.temperature?.toString() ?? '--'}
-              unit="°C"
-              color="#F59E0B"
-              darkMode={darkMode}
-              surfaceColor={surfaceColor}
-            />
+            <MetricCard icon="heart" label={t.heartRate} value={latestVitals?.heart_rate?.toString() ?? '--'} unit={t.bpm} color={brandColors.heart} darkMode={darkMode} surfaceColor={surfaceColor} />
+            <MetricCard icon="fitness" label={t.bloodPressure} value={latestVitals?.blood_pressure_systolic ? `${latestVitals.blood_pressure_systolic}/${latestVitals.blood_pressure_diastolic}` : '--/--'} unit="mmHg" color={brandColors.bp} darkMode={darkMode} surfaceColor={surfaceColor} />
+            <MetricCard icon="water" label={t.oxygenSaturation} value={latestVitals?.oxygen_saturation?.toString() ?? '--'} unit="%" color={brandColors.spo2} darkMode={darkMode} surfaceColor={surfaceColor} />
+            <MetricCard icon="thermometer" label={t.temperature} value={latestVitals?.temperature?.toString() ?? '--'} unit="°C" color={brandColors.temp} darkMode={darkMode} surfaceColor={surfaceColor} />
           </View>
         </View>
 
         {/* ── WEEKLY TRENDS ── */}
         <View style={styles.section}>
-          <AppText style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-            {t.weeklyTrend}
-          </AppText>
-          <WeeklyTrendCard
-            language={language}
-            darkMode={darkMode}
-            surfaceColor={surfaceColor}
-            cardBorder={cardBorder}
-            colors={colors}
-            t={t}
-          />
+          <AppText style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t.weeklyTrend}</AppText>
+          <WeeklyTrendCard language={language} darkMode={darkMode} surfaceColor={surfaceColor} cardBorder={cardBorder} colors={colors} t={t} />
         </View>
 
         {/* ── QUICK ACTIONS ── */}
         <View style={styles.section}>
-          <AppText style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-            {t.quickActions}
-          </AppText>
+          <AppText style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t.quickActions}</AppText>
           <View style={styles.quickGrid}>
-            <QuickAction
-              icon="shield-checkmark"
-              label={t.emergency}
-              color="#EF4444"
-              onPress={() => navigation.navigate('Emergency')}
-              darkMode={darkMode}
-              surfaceColor={surfaceColor}
-            />
-            <QuickAction
-              icon="medical"
-              label={t.medications}
-              color="#10B981"
-              onPress={() => navigation.navigate('Profile', { screen: 'Medications' })}
-              darkMode={darkMode}
-              surfaceColor={surfaceColor}
-            />
-            <QuickAction
-              icon="chatbubbles"
-              label={t.chat}
-              color="#0077C8"
-              onPress={() => navigation.navigate('Chat')}
-              darkMode={darkMode}
-              surfaceColor={surfaceColor}
-            />
-            <QuickAction
-              icon="heart"
-              label={t.vitals}
-              color="#F59E0B"
-              onPress={() => navigation.navigate('Vitals')}
-              darkMode={darkMode}
-              surfaceColor={surfaceColor}
-            />
+            <QuickAction icon="shield-checkmark" label={t.emergency} color={brandColors.danger} onPress={() => navigation.navigate('Emergency')} darkMode={darkMode} surfaceColor={surfaceColor} />
+            <QuickAction icon="medical" label={t.medications} color={brandColors.success} onPress={() => navigation.navigate('Profile', { screen: 'Medications' })} darkMode={darkMode} surfaceColor={surfaceColor} />
+            <QuickAction icon="chatbubbles" label={t.chat} color={brandColors.primary} onPress={() => navigation.navigate('Chat')} darkMode={darkMode} surfaceColor={surfaceColor} />
+            <QuickAction icon="heart" label={t.vitals} color={brandColors.warning} onPress={() => navigation.navigate('Vitals')} darkMode={darkMode} surfaceColor={surfaceColor} />
           </View>
         </View>
 
         {/* ── TODAY'S MEDICATIONS ── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <AppText style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-              {t.todayMeds}
-            </AppText>
+            <AppText style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t.todayMeds}</AppText>
             {medications.length > 0 && (
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => navigation.navigate('Profile', { screen: 'Medications' })}
-              >
-                <AppText style={[styles.viewAll, { color: colors.primary }]}>{t.viewAll}</AppText>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('Profile', { screen: 'Medications' })}>
+                <AppText style={[styles.viewAll, { color: brandColors.primary }]}>{t.viewAll}</AppText>
               </TouchableOpacity>
             )}
           </View>
@@ -550,15 +418,12 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
             ) : (
               <View style={styles.emptyMeds}>
                 <Ionicons name="medical-outline" size={32} color={colors.textSecondary + '60'} />
-                <AppText style={[styles.emptyText, { color: colors.textSecondary }]}>
-                  {t.noMedsToday}
-                </AppText>
+                <AppText style={[styles.emptyText, { color: colors.textSecondary }]}>{t.noMedsToday}</AppText>
               </View>
             )}
           </View>
         </View>
 
-        {/* Bottom spacer */}
         <View style={{ height: spacing.xl }} />
       </ScrollView>
     </Screen>
@@ -566,270 +431,54 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
-  },
-  // ── Header ──
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.xl,
-  },
-  headerRTL: {
-    flexDirection: 'row-reverse',
-  },
-  headerLeft: {
-    flex: 1,
-    gap: 2,
-  },
-  greeting: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  userName: {
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    marginTop: 2,
-  },
-  dateText: {
-    fontSize: 13,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  notifBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  notifBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: '#EF4444',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  notifBadgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  // ── Sections ──
-  section: {
-    marginBottom: spacing.xl,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: spacing.md,
-  },
-  viewAll: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: spacing.md,
-  },
-  // ── Metrics grid ──
-  metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  metricCard: {
-    width: (SCREEN_WIDTH - spacing.lg * 2 - spacing.sm) / 2,
-    borderRadius: 18,
-    padding: spacing.md,
-    gap: 8,
-  },
-  metricIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  metricLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  metricValueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 4,
-  },
-  metricValue: {
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  metricUnit: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  // ── Charts ──
-  chartCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: spacing.md,
-    gap: spacing.md,
-  },
-  trendStatsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  trendStat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 2,
-  },
-  trendStatLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  trendStatVal: {
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  trendStatUnit: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  trendStatDiv: {
-    width: 1,
-    height: 28,
-    borderRadius: 1,
-  },
-  chartRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'flex-start',
-  },
-  chartCol: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  chartLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  chartDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  chartLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  chartDivider: {
-    width: 1,
-    height: '80%',
-    backgroundColor: 'rgba(128,128,128,0.15)',
-    alignSelf: 'center',
-  },
-  chartDays: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(128,128,128,0.10)',
-  },
-  chartDayText: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  // ── Quick actions ──
-  quickGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  quickAction: {
-    width: (SCREEN_WIDTH - spacing.lg * 2 - spacing.sm * 3) / 4,
-    borderRadius: 16,
-    padding: spacing.sm,
-    alignItems: 'center',
-    gap: 6,
-  },
-  quickIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  // ── Medications ──
-  medsCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  medRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    borderBottomWidth: 1,
-    gap: spacing.sm,
-  },
-  medDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  medInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  medName: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  medDose: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  medTimeBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  medTimeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  emptyMeds: {
-    alignItems: 'center',
-    padding: spacing.xl,
-    gap: spacing.sm,
-  },
-  emptyText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
+  scroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xl },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.xl },
+  headerRTL: { flexDirection: 'row-reverse' },
+  headerLeft: { flex: 1, gap: 2 },
+  greeting: { fontSize: 14, fontWeight: '500' },
+  userName: { fontSize: 26, fontWeight: '700', letterSpacing: -0.5, marginTop: 2 },
+  dateText: { fontSize: 13, fontWeight: '500', marginTop: 4 },
+  notifBtn: { width: 46, height: 46, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  notifBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: '#FF3B3B', borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  notifBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  section: { marginBottom: spacing.xl },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.md },
+  viewAll: { fontSize: 14, fontWeight: '600', marginBottom: spacing.md },
+  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  metricCard: { borderRadius: 18, padding: spacing.md, gap: 8 },
+  metricIconWrap: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  metricLabel: { fontSize: 12, fontWeight: '600' },
+  metricValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
+  metricValue: { fontSize: 24, fontWeight: '700', letterSpacing: -0.5 },
+  metricUnit: { fontSize: 12, fontWeight: '600' },
+  chartCard: { borderRadius: 18, borderWidth: 1, padding: spacing.md, gap: spacing.md },
+  trendStatsRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
+  trendStat: { flex: 1, alignItems: 'center', gap: 2 },
+  trendStatLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  trendStatVal: { fontSize: 20, fontWeight: '700', letterSpacing: -0.5 },
+  trendStatUnit: { fontSize: 10, fontWeight: '600' },
+  trendStatDiv: { width: 1, height: 28, borderRadius: 1 },
+  chartRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-start' },
+  chartCol: { alignItems: 'center', gap: 8 },
+  chartLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chartDot: { width: 8, height: 8, borderRadius: 4 },
+  chartLabel: { fontSize: 12, fontWeight: '600' },
+  chartDivider: { width: 1, height: '80%', backgroundColor: 'rgba(128,128,128,0.15)', alignSelf: 'center' },
+  chartDays: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: 'rgba(128,128,128,0.10)' },
+  chartDayText: { fontSize: 10, fontWeight: '600' },
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  quickAction: { borderRadius: 16, padding: spacing.sm, alignItems: 'center', gap: 6 },
+  quickIconWrap: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  quickLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
+  medsCard: { borderRadius: 18, borderWidth: 1, overflow: 'hidden' },
+  medRow: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, borderBottomWidth: 1, gap: spacing.sm },
+  medDot: { width: 8, height: 8, borderRadius: 4 },
+  medInfo: { flex: 1, gap: 2 },
+  medName: { fontSize: 15, fontWeight: '600' },
+  medDose: { fontSize: 12, fontWeight: '500' },
+  medTimeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  medTimeText: { fontSize: 11, fontWeight: '700' },
+  emptyMeds: { alignItems: 'center', padding: spacing.xl, gap: spacing.sm },
+  emptyText: { fontSize: 14, fontWeight: '500' },
 });

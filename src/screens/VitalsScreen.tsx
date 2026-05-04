@@ -24,25 +24,25 @@ import {
   type WeeklyAnalytics,
 } from '../utils/vitalsAnalytics';
 
-/* ── Design tokens ─────────────────────────────────────────── */
+/* ── Design tokens (aligned to brand palette) ──────────────── */
 const P = {
   bg: '#0A0F1C',
   card: '#111827',
-  cardBorder: '#1F2937',
+  cardBorder: 'rgba(255,255,255,0.06)',
   glass: 'rgba(255,255,255,0.03)',
-  primary: '#06B6D4',
-  primaryDim: 'rgba(6,182,212,0.10)',
+  primary: '#00C2FF',
+  primaryDim: 'rgba(0,194,255,0.10)',
   text: '#F1F5F9',
   muted: '#94A3B8',
   dim: '#64748B',
   success: '#10B981',
   successDim: 'rgba(16,185,129,0.10)',
-  danger: '#EF4444',
-  dangerDim: 'rgba(239,68,68,0.10)',
+  danger: '#FF3B3B',
+  dangerDim: 'rgba(255,59,59,0.10)',
   amber: '#F59E0B',
   amberDim: 'rgba(245,158,11,0.08)',
-  rose: '#F43F5E',
-  roseDim: 'rgba(244,63,94,0.10)',
+  rose: '#FF3B3B',
+  roseDim: 'rgba(255,59,59,0.10)',
   purple: '#8B5CF6',
   purpleDim: 'rgba(139,92,246,0.10)',
   orange: '#F97316',

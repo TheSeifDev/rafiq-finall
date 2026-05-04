@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   TextInput,
@@ -7,6 +7,7 @@ import {
   ViewStyle,
   TextStyle,
   TextInputProps,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from './AppText';
@@ -40,14 +41,30 @@ export function AppInput({
   ...rest
 }: Props) {
   const [focused, setFocused] = useState(false);
+  const borderAnim = useRef(new Animated.Value(0)).current;
   const { colors, darkMode, isRTL } = useTheme();
 
-  const fieldBg = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
+  const fieldBg = darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)';
   const fieldBorder = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
-  const focusBg = darkMode ? 'rgba(0,194,255,0.06)' : 'rgba(0,119,200,0.04)';
+  const focusBorder = '#00C2FF';
+  const focusBg = darkMode ? 'rgba(0,194,255,0.05)' : 'rgba(0,194,255,0.03)';
   const labelColor = darkMode ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.55)';
-  const placeholderColor = darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.30)';
+  const placeholderColor = darkMode ? 'rgba(255,255,255,0.30)' : 'rgba(0,0,0,0.28)';
   const textAlign = isRTL ? 'right' as const : 'left' as const;
+
+  const handleFocus = () => {
+    setFocused(true);
+    Animated.timing(borderAnim, { toValue: 1, duration: 200, useNativeDriver: false }).start();
+  };
+  const handleBlur = () => {
+    setFocused(false);
+    Animated.timing(borderAnim, { toValue: 0, duration: 200, useNativeDriver: false }).start();
+  };
+
+  const animBorderColor = borderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [fieldBorder, focusBorder],
+  });
 
   return (
     <View style={[styles.wrapper, containerStyle]}>
@@ -56,11 +73,10 @@ export function AppInput({
           {label}
         </AppText>
       )}
-      <View
+      <Animated.View
         style={[
           styles.field,
-          { backgroundColor: fieldBg, borderColor: fieldBorder },
-          focused && { borderColor: colors.secondary, backgroundColor: focusBg },
+          { backgroundColor: focused ? focusBg : fieldBg, borderColor: animBorderColor },
         ]}
       >
         {icon && !isPassword && <View style={styles.leftIcon}>{icon}</View>}
@@ -80,9 +96,9 @@ export function AppInput({
           keyboardType={keyboardType}
           autoCapitalize={autoCapitalize}
           textContentType={textContentType}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          selectionColor={colors.secondary}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          selectionColor="#00C2FF"
           textAlign={textAlign}
           {...rest}
         />
@@ -96,7 +112,7 @@ export function AppInput({
             />
           </TouchableOpacity>
         )}
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -113,14 +129,14 @@ const styles = StyleSheet.create({
   field: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 58,
-    borderRadius: 16,
+    height: 52,
+    borderRadius: 14,
     borderWidth: 1.5,
     paddingHorizontal: 16,
   },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
     height: '100%',
   },

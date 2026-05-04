@@ -1,18 +1,18 @@
 export const colors = {
-  primary: '#0077C8',
-  primaryDark: '#005A9C',
-  primaryLight: '#E6F2FB',
+  primary: '#00C2FF',
+  primaryDark: '#1E3A8A',
+  primaryLight: '#E0F7FF',
   background: '#FFFFFF',
-  backgroundDark: '#0A0E17',
+  backgroundDark: '#0A0F1C',
   surface: '#F8FAFC',
-  surfaceDark: '#1E2330',
+  surfaceDark: '#111827',
   card: '#F8FAFC',
-  cardDark: '#1E2330',
+  cardDark: '#1A2332',
   border: '#E2E8F0',
-  borderDark: '#334155',
+  borderDark: 'rgba(255,255,255,0.06)',
   text: {
     primary: '#191D32',
-    primaryDark: '#FFFFFF',
+    primaryDark: '#F1F5F9',
     secondary: '#64748B',
     secondaryDark: '#94A3B8',
     disabled: '#CBD5E1',
@@ -23,7 +23,7 @@ export const colors = {
   status: {
     success: '#10B981',
     successLight: '#D1FAE5',
-    error: '#EF4444',
+    error: '#FF3B3B',
     errorLight: '#FEE2E2',
     warning: '#F59E0B',
     warningLight: '#FEF3C7',
@@ -32,9 +32,10 @@ export const colors = {
   },
   accent: {
     purple: '#A855F7',
-    red: '#FF453A',
+    red: '#FF3B3B',
     cyan: '#00C2FF',
     green: '#4ADE80',
+    secondary: '#1E3A8A',
   },
 } as const;
 

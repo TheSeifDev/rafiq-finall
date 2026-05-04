@@ -30,8 +30,8 @@ export function BottomTabBar({ state, navigation }: BottomTabBarProps): React.JS
   const t = translations[language];
 
   const tabBg = darkMode
-    ? 'rgba(15, 23, 42, 0.95)'
-    : 'rgba(255, 255, 255, 0.97)';
+    ? 'rgba(10, 15, 28, 0.97)'
+    : 'rgba(255, 255, 255, 0.98)';
   const borderColor = darkMode
     ? 'rgba(255, 255, 255, 0.06)'
     : 'rgba(0, 0, 0, 0.06)';
@@ -47,6 +47,7 @@ export function BottomTabBar({ state, navigation }: BottomTabBarProps): React.JS
           const label = labelKey ? (t as any)[labelKey] : route.name;
 
           const isEmergency = route.name === 'Emergency';
+          const activeColor = isEmergency ? '#FF3B3B' : '#00C2FF';
 
           return (
             <Pressable
@@ -60,22 +61,21 @@ export function BottomTabBar({ state, navigation }: BottomTabBarProps): React.JS
                 styles.tab,
                 pressed && styles.tabPressed,
               ]}
-              android_ripple={{ color: colors.primary + '20', borderless: true }}
+              android_ripple={{ color: activeColor + '20', borderless: true }}
             >
-              {/* Emergency gets a special accent circle */}
               {isEmergency ? (
-                <View style={[styles.emergencyCircle, { backgroundColor: colors.danger + '15' }]}>
+                <View style={[styles.emergencyCircle, { backgroundColor: '#FF3B3B15' }]}>
                   <Ionicons
                     name={iconName}
                     size={22}
-                    color={isFocused ? colors.danger : colors.textSecondary}
+                    color={isFocused ? '#FF3B3B' : colors.textSecondary}
                   />
                 </View>
               ) : (
                 <Ionicons
                   name={iconName}
                   size={22}
-                  color={isFocused ? colors.primary : colors.textSecondary}
+                  color={isFocused ? '#00C2FF' : colors.textSecondary}
                 />
               )}
               <AppText
@@ -83,17 +83,17 @@ export function BottomTabBar({ state, navigation }: BottomTabBarProps): React.JS
                   styles.label,
                   {
                     color: isEmergency
-                      ? (isFocused ? colors.danger : colors.textSecondary)
-                      : (isFocused ? colors.primary : colors.textSecondary),
+                      ? (isFocused ? '#FF3B3B' : colors.textSecondary)
+                      : (isFocused ? '#00C2FF' : colors.textSecondary),
                     fontWeight: isFocused ? '700' : '500',
                   },
                 ]}
               >
                 {label}
               </AppText>
-              {/* Active indicator dot */}
+              {/* Active indicator bar */}
               {isFocused && !isEmergency && (
-                <View style={[styles.activeDot, { backgroundColor: colors.primary }]} />
+                <View style={[styles.activeBar, { backgroundColor: '#00C2FF' }]} />
               )}
             </Pressable>
           );
@@ -106,8 +106,8 @@ export function BottomTabBar({ state, navigation }: BottomTabBarProps): React.JS
 const styles = StyleSheet.create({
   container: {
     borderTopWidth: 1,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 8,
-    paddingTop: 6,
+    paddingBottom: Platform.OS === 'ios' ? 22 : 10,
+    paddingTop: 8,
   },
   inner: {
     flexDirection: 'row',
@@ -135,10 +135,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: -2,
   },
-  activeDot: {
-    width: 4,
-    height: 4,
+  activeBar: {
+    width: 16,
+    height: 3,
     borderRadius: 2,
-    marginTop: 2,
+    marginTop: 3,
   },
 });
