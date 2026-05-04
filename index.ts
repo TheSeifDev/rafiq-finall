@@ -1,11 +1,32 @@
-// ─── Expo Go SDK Warning Suppression ────────────────────────
-// This MUST execute before ANY import that touches expo-notifications.
-// The SDK's DevicePushTokenAutoRegistration.fx.js fires side-effect
-// code on module evaluation that calls console.error() in Expo Go.
+// ─────────────────────────────────────────────────────────────
+// index.ts — Application entry point
+// ─────────────────────────────────────────────────────────────
+// This file runs BEFORE any component mounts. It performs two
+// critical setup steps:
 //
-// Since ES `import` statements are hoisted, we use inline require()
-// for expo-constants to check the environment, then patch console
-// BEFORE the App import pulls in the notification chain.
+//   1. Set I18nManager RTL direction ONCE (never again)
+//   2. Suppress expo-notifications SDK console errors in Expo Go
+//
+// After this file, I18nManager is NEVER used again in the app.
+// All components derive isRTL from: language === 'ar' (Zustand).
+// ─────────────────────────────────────────────────────────────
+
+import { I18nManager } from 'react-native';
+import * as Localization from 'expo-localization';
+
+// ─── Step 1: Lock RTL direction ONCE at startup ─────────────
+// I18nManager.forceRTL must only be called before the component
+// tree mounts. Calling it later causes the entire app layout to
+// flip unpredictably. We detect the device locale here and set
+// it permanently for this session.
+const deviceIsArabic = Localization.getLocales()[0]?.languageCode === 'ar';
+I18nManager.allowRTL(true);
+I18nManager.forceRTL(deviceIsArabic);
+
+// ─── Step 2: Suppress Expo Go SDK warnings ──────────────────
+// expo-notifications has side-effect code that fires console.error()
+// and console.warn() when imported in Expo Go. We patch console
+// BEFORE importing App (which imports expo-notifications).
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const ExpoConstants = require('expo-constants').default as typeof import('expo-constants')['default'];
@@ -31,11 +52,8 @@ if (ExpoConstants.appOwnership === 'expo') {
   }, 0);
 }
 
-// ─── Now safe to import App (which imports expo-notifications) ──
+// ─── Step 3: Register the app ───────────────────────────────
 import { registerRootComponent } from 'expo';
 import App from './App';
 
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
 registerRootComponent(App);

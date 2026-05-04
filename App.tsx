@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { I18nManager, LogBox, Platform } from 'react-native';
+import { LogBox, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
@@ -13,8 +13,6 @@ import { initNotificationsOnce } from './src/lib/notifications/medicationReminde
 import { navigationRef } from './src/navigation/MainNavigator';
 
 // ─── Disable auto-server-registration in Expo Go ────────────
-// Prevents future getDevicePushTokenAsync calls from the SDK's
-// internal auto-registration system. Safe no-op in production.
 if (Constants.appOwnership === 'expo') {
   Notifications.setAutoServerRegistrationEnabledAsync(false).catch(() => {});
 }
@@ -24,6 +22,11 @@ LogBox.ignoreLogs([
   'expo-notifications',
   '`expo-notifications` functionality is not fully supported in Expo Go',
 ]);
+
+// ─── Boot component ─────────────────────────────────────────
+// ✅ I18nManager is NOT used here. RTL direction is set ONCE in
+// index.ts at startup and NEVER mutated again during the session.
+// All components derive isRTL from: language === 'ar' (Zustand).
 
 function Boot(): React.JSX.Element {
   const initialize = useAuthStore((state) => state.initialize);
@@ -36,18 +39,15 @@ function Boot(): React.JSX.Element {
     initNotificationsOnce().catch((e) => console.warn('[Notifications] Init failed:', e));
   }, [hydrate, initialize]);
 
-  useEffect(() => {
-    const shouldBeRTL = language === 'ar';
-    if (I18nManager.isRTL !== shouldBeRTL) {
-      I18nManager.allowRTL(shouldBeRTL);
-      I18nManager.forceRTL(shouldBeRTL);
-      if (Platform.OS !== 'web') {
-        // Requires app restart to fully apply.
-      }
-    }
-  }, [language]);
+  // ✅ LOCKED direction container — prevents any child from
+  // accidentally flipping the layout. Uses Zustand store, NOT I18nManager.
+  const isRTL = language === 'ar';
 
-  return <RootNavigator />;
+  return (
+    <View style={{ flex: 1, direction: isRTL ? 'rtl' : 'ltr' }}>
+      <RootNavigator />
+    </View>
+  );
 }
 
 export default function App(): React.JSX.Element {

@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Alert,
   TextInput,
-  I18nManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -191,12 +190,13 @@ const sectionStyles = StyleSheet.create({
 
 // ─── Quiet Hours Time Input ──────────────────────────────────
 
-function TimeInput({ label, value, onChange, darkMode, colors }: {
+function TimeInput({ label, value, onChange, darkMode, colors, isAr }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   darkMode: boolean;
   colors: any;
+  isAr: boolean;
 }) {
   return (
     <View style={timeStyles.wrap}>
@@ -212,7 +212,7 @@ function TimeInput({ label, value, onChange, darkMode, colors }: {
           color: colors.textPrimary,
           backgroundColor: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
           borderColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-          textAlign: I18nManager.isRTL ? 'right' : 'left',
+          textAlign: isAr ? 'right' : 'left',
         }]}
         placeholder="00:00"
         placeholderTextColor={colors.textSecondary + '60'}
@@ -406,6 +406,7 @@ export function NotificationSettingsScreen(): React.JSX.Element {
                 onChange={(v) => setPrefs({ quietHoursStart: v })}
                 darkMode={darkMode}
                 colors={colors}
+                isAr={isAr}
               />
               <View style={styles.quietDash}>
                 <AppText style={{ color: colors.textSecondary, fontSize: 18 }}>—</AppText>
@@ -416,6 +417,7 @@ export function NotificationSettingsScreen(): React.JSX.Element {
                 onChange={(v) => setPrefs({ quietHoursEnd: v })}
                 darkMode={darkMode}
                 colors={colors}
+                isAr={isAr}
               />
             </View>
           )}
