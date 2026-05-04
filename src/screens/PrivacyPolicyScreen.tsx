@@ -13,10 +13,13 @@ import { spacing } from '../theme';
 import { useTheme } from '../theme/useTheme';
 import { useAppStore } from '../store/app.store';
 import { translations } from '../constants/translations';
-import type { AuthStackParamList } from '../navigation/types';
+import type { AuthStackParamList, ProfileStackParamList } from '../navigation/types';
 import { Ionicons } from '@expo/vector-icons';
 
-type Props = NativeStackScreenProps<AuthStackParamList, 'PrivacyPolicy'>;
+// ← FIXED: Union type يقبل AuthStack أو ProfileStack
+type Props = 
+  | NativeStackScreenProps<AuthStackParamList, 'PrivacyPolicy'>
+  | NativeStackScreenProps<ProfileStackParamList, 'PrivacyPolicy'>;
 
 const PP_KEYS = [
   { title: 'pp_1_title', body: 'pp_1_body' },

@@ -31,10 +31,12 @@ const DEFAULT_NOTIF_PREFS: NotificationPrefs = {
 type AppState = {
   language: AppLanguage;
   darkMode: boolean;
+  healthDataConsent: boolean;
   notificationPrefs: NotificationPrefs;
   hydrate: (fallbackLanguage: AppLanguage) => Promise<void>;
   setLanguage: (language: AppLanguage) => Promise<void>;
   setDarkMode: (enabled: boolean) => Promise<void>;
+  setHealthDataConsent: (enabled: boolean) => Promise<void>;
   setNotificationPrefs: (prefs: Partial<NotificationPrefs>) => Promise<void>;
 };
 
@@ -46,6 +48,7 @@ function persist(state: AppState) {
     JSON.stringify({
       language: state.language,
       darkMode: state.darkMode,
+      healthDataConsent: state.healthDataConsent,
       notificationPrefs: state.notificationPrefs,
     }),
   );
@@ -54,6 +57,7 @@ function persist(state: AppState) {
 export const useAppStore = create<AppState>((set, get) => ({
   language: 'ar',
   darkMode: false,
+  healthDataConsent: true,
   notificationPrefs: { ...DEFAULT_NOTIF_PREFS },
   hydrate: async (fallbackLanguage) => {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -67,6 +71,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         language: parsed.language ?? fallbackLanguage,
         darkMode: parsed.darkMode ?? false,
+        healthDataConsent: parsed.healthDataConsent ?? true,
         notificationPrefs: { ...DEFAULT_NOTIF_PREFS, ...(parsed.notificationPrefs ?? {}) },
       });
     } catch {
@@ -79,6 +84,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setDarkMode: async (enabled) => {
     set({ darkMode: enabled });
+    await persist(get());
+  },
+  setHealthDataConsent: async (enabled) => {
+    set({ healthDataConsent: enabled });
     await persist(get());
   },
   setNotificationPrefs: async (prefs) => {

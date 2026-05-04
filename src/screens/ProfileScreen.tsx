@@ -7,7 +7,11 @@ import {
   Switch,
   Alert,
   RefreshControl,
+  Modal,
+  TextInput,
+  Pressable,
 } from 'react-native';
+import { useDevicesStore, type Device, type DeviceType } from '../store/devices.store';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../components/ui/Screen';
 import { AppText } from '../components/ui/AppText';
@@ -21,12 +25,23 @@ import type { ProfileStackScreenProps } from '../navigation/types';
 
 type Props = ProfileStackScreenProps<'ProfileMain'>;
 
-// ── Mock devices (future: fetch from device service) ──
-const MOCK_DEVICES = [
-  { id: '1', name: 'Raqeeb Gas Sensor', icon: 'flame-outline', type: 'gas', online: true, battery: 87, lastSync: '2 min ago', lastSyncAr: 'منذ ٢ دقيقة' },
-  { id: '2', name: 'mmWave Motion Sensor', icon: 'radio-outline', type: 'motion', online: true, battery: 94, lastSync: '5 min ago', lastSyncAr: 'منذ ٥ دقائق' },
-  { id: '3', name: 'Smart Watch', icon: 'watch-outline', type: 'wearable', online: false, battery: 23, lastSync: '3 hours ago', lastSyncAr: 'منذ ٣ ساعات' },
+// ── Device helpers ──
+const DEVICE_ICONS: Record<DeviceType, string> = { watch: 'watch-outline', gas: 'flame-outline', motion: 'radio-outline' };
+const DEVICE_COLORS: Record<DeviceType, string> = { watch: '#0EA5E9', gas: '#F59E0B', motion: '#8B5CF6' };
+const TYPE_OPTIONS: { key: DeviceType; labelAr: string; labelEn: string }[] = [
+  { key: 'watch', labelAr: 'ساعة ذكية', labelEn: 'Smart Watch' },
+  { key: 'gas', labelAr: 'حساس غاز', labelEn: 'Gas Sensor' },
+  { key: 'motion', labelAr: 'حساس حركة', labelEn: 'Motion Sensor' },
 ];
+function timeAgo(iso: string, isAr: boolean): string {
+  const diff = Math.max(0, Date.now() - new Date(iso).getTime());
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return isAr ? 'الآن' : 'Just now';
+  if (m < 60) return isAr ? `منذ ${m} د` : `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return isAr ? `منذ ${h} س` : `${h}h ago`;
+  return isAr ? `منذ ${Math.floor(h / 24)} ي` : `${Math.floor(h / 24)}d ago`;
+}
 
 // ── Section Group ──
 function SectionGroup({
@@ -107,57 +122,99 @@ function SettingsRow({
   }
   return content;
 }
-
-// ── Device Card ──
 function DeviceCard({
   device,
   darkMode,
   colors,
   isAr,
+  onRename,
+  onDelete,
+  onToggle,
 }: {
-  device: typeof MOCK_DEVICES[0];
+  device: Device;
   darkMode: boolean;
   colors: any;
   isAr: boolean;
+  onRename: () => void;
+  onDelete: () => void;
+  onToggle: () => void;
 }) {
-  const statusColor = device.online ? colors.success : colors.textSecondary;
-  const statusLabel = device.online
-    ? (isAr ? 'متصل' : 'Online')
-    : (isAr ? 'غير متصل' : 'Offline');
+  const accent = DEVICE_COLORS[device.type] ?? colors.primary;
+  const statusColor = device.isConnected ? colors.success : colors.textSecondary;
+  const statusLabel = device.isConnected ? (isAr ? 'متصل' : 'Online') : (isAr ? 'غير متصل' : 'Offline');
   const surfaceBg = darkMode ? 'rgba(30, 41, 59, 0.60)' : 'rgba(248, 250, 252, 0.90)';
 
+  const hasBattery = device.type === 'watch' && typeof device.battery === 'number';
+  const batteryValue = hasBattery ? device.battery : null;
+
+  const batIcon =
+    batteryValue != null
+      ? batteryValue > 75
+        ? 'battery-full-outline'
+        : batteryValue > 40
+          ? 'battery-half-outline'
+          : 'battery-dead-outline'
+      : null;
+
+  const batColor =
+    batteryValue != null
+      ? batteryValue > 20
+        ? colors.success
+        : colors.danger
+      : null;
+
   return (
-    <View style={[styles.deviceCard, { backgroundColor: surfaceBg }]}>
-      <View style={[styles.deviceIconWrap, { backgroundColor: colors.primary + '10' }]}>
-        <Ionicons name={device.icon as any} size={22} color={colors.primary} />
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onLongPress={onRename}
+      style={[styles.deviceCard, { backgroundColor: surfaceBg }]}
+    >
+      <View style={[styles.deviceIconWrap, { backgroundColor: accent + '15' }]}>
+        <Ionicons name={DEVICE_ICONS[device.type] as any} size={22} color={accent} />
       </View>
+
       <View style={styles.deviceInfo}>
-        <AppText style={[styles.deviceName, { color: colors.textPrimary }]}>
-          {device.name}
-        </AppText>
+        <AppText style={[styles.deviceName, { color: colors.textPrimary }]}>{device.name}</AppText>
         <View style={styles.deviceMeta}>
           <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+          <AppText style={[styles.deviceMetaText, { color: colors.textSecondary }]}>{statusLabel}</AppText>
           <AppText style={[styles.deviceMetaText, { color: colors.textSecondary }]}>
-            {statusLabel}
-          </AppText>
-          <AppText style={[styles.deviceMetaText, { color: colors.textSecondary }]}>
-            ·  {isAr ? device.lastSyncAr : device.lastSync}
+            · {timeAgo(device.lastSeen, isAr)}
           </AppText>
         </View>
       </View>
-      {device.battery != null && (
+
+      {hasBattery && batteryValue != null && batIcon && batColor ? (
         <View style={styles.batteryWrap}>
-          <Ionicons
-            name={device.battery > 50 ? 'battery-half-outline' : 'battery-dead-outline'}
-            size={16}
-            color={device.battery > 20 ? colors.success : colors.danger}
-          />
-          <AppText style={[styles.batteryText, { color: colors.textSecondary }]}>
-            {device.battery}%
-          </AppText>
+          <Ionicons name={batIcon as any} size={16} color={batColor} />
+          <AppText style={[styles.batteryText, { color: colors.textSecondary }]}>{batteryValue}%</AppText>
         </View>
-      )}
-    </View>
+      ) : null}
+
+      <View style={styles.deviceActions}>
+        <TouchableOpacity
+          hitSlop={8}
+          onPress={onToggle}
+          style={[
+            styles.deviceActBtn,
+            { backgroundColor: (device.isConnected ? colors.success : colors.textSecondary) + '12' },
+          ]}
+        >
+          <Ionicons
+            name={device.isConnected ? 'link' : 'unlink'}
+            size={14}
+            color={device.isConnected ? colors.success : colors.textSecondary}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          hitSlop={8}
+          onPress={onDelete}
+          style={[styles.deviceActBtn, { backgroundColor: colors.danger + '12' }]}
+        >
+          <Ionicons name="trash-outline" size={14} color={colors.danger} />
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -169,6 +226,33 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
   const { language, darkMode: isDark, setDarkMode, setLanguage } = useAppStore();
   const t = translations[language] as any;
   const isAr = language === 'ar';
+
+  // Devices store
+  const { devices, addDevice, removeDevice, renameDevice, toggleConnection, _hydrate } = useDevicesStore();
+  useEffect(() => { _hydrate(); }, []);
+
+  // Modal state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addType, setAddType] = useState<DeviceType>('watch');
+  const [renameTarget, setRenameTarget] = useState<Device | null>(null);
+  const [renameTxt, setRenameTxt] = useState('');
+
+  const handleAddDevice = () => {
+    if (!addName.trim()) return;
+    addDevice(addName.trim(), addType);
+    setAddName(''); setAddType('watch'); setShowAddModal(false);
+  };
+  const handleRenameSubmit = () => {
+    if (renameTarget && renameTxt.trim()) renameDevice(renameTarget.id, renameTxt.trim());
+    setRenameTarget(null); setRenameTxt('');
+  };
+  const handleDelete = (d: Device) => {
+    Alert.alert(isAr ? 'حذف الجهاز' : 'Remove Device', isAr ? `هل تريد حذف "${d.name}"؟` : `Remove "${d.name}"?`, [
+      { text: t.cancel, style: 'cancel' },
+      { text: t.confirm, style: 'destructive', onPress: () => removeDevice(d.id) },
+    ]);
+  };
 
   const [profile, setProfile] = useState<PatientProfile | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -199,24 +283,6 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
       ],
     );
   }, [signOut, t, isAr]);
-
-  const handleDeleteAccount = useCallback(() => {
-    Alert.alert(
-      t.deleteAccount,
-      t.deleteAccountConfirm,
-      [
-        { text: t.cancel, style: 'cancel' },
-        {
-          text: t.confirm,
-          style: 'destructive',
-          onPress: () => {
-            // Future: call delete account API
-            signOut();
-          },
-        },
-      ],
-    );
-  }, [signOut, t]);
 
   const avatarInitial = (profile?.full_name ?? session?.user.email ?? '?')[0]?.toUpperCase();
 
@@ -319,11 +385,29 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
         {/* ── Devices ── */}
         <SectionGroup title={t.devicesSection} darkMode={darkMode} colors={colors}>
           <View style={styles.devicesContainer}>
-            {MOCK_DEVICES.map((device) => (
-              <DeviceCard key={device.id} device={device} darkMode={darkMode} colors={colors} isAr={isAr} />
+            {devices.map((device) => (
+              <DeviceCard
+                key={device.id}
+                device={device}
+                darkMode={darkMode}
+                colors={colors}
+                isAr={isAr}
+                onRename={() => { setRenameTarget(device); setRenameTxt(device.name); }}
+                onDelete={() => handleDelete(device)}
+                onToggle={() => toggleConnection(device.id)}
+              />
             ))}
+            {devices.length === 0 && (
+              <View style={styles.emptyDevices}>
+                <Ionicons name="hardware-chip-outline" size={28} color={colors.textSecondary + '50'} />
+                <AppText style={{ color: colors.textSecondary, fontSize: 13 }}>
+                  {isAr ? 'لا يوجد أجهزة' : 'No devices added'}
+                </AppText>
+              </View>
+            )}
             <TouchableOpacity
               activeOpacity={0.7}
+              onPress={() => setShowAddModal(true)}
               style={[styles.addDeviceBtn, { borderColor: colors.primary + '30' }]}
             >
               <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
@@ -384,20 +468,80 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
             colors={colors}
             showChevron={false}
           />
-          <SettingsRow
-            icon="trash-outline"
-            label={t.deleteAccount}
-            onPress={handleDeleteAccount}
-            isDestructive
-            darkMode={darkMode}
-            colors={colors}
-            isLast
-            showChevron={false}
-          />
         </SectionGroup>
 
         <View style={{ height: spacing['2xl'] }} />
       </ScrollView>
+
+      {/* ═══ ADD DEVICE MODAL ═══ */}
+      <Modal visible={showAddModal} transparent animationType="fade" onRequestClose={() => setShowAddModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowAddModal(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: darkMode ? '#1E293B' : '#fff' }]} onPress={() => {}}>
+            <AppText style={[styles.modalTitle, { color: colors.textPrimary }]}>
+              {isAr ? 'إضافة جهاز' : 'Add Device'}
+            </AppText>
+            <TextInput
+              value={addName}
+              onChangeText={setAddName}
+              placeholder={isAr ? 'اسم الجهاز' : 'Device name'}
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.modalInput, { color: colors.textPrimary, borderColor: colors.textSecondary + '30', backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : '#F8FAFC' }]}
+            />
+            <AppText style={[styles.modalSubLabel, { color: colors.textSecondary }]}>
+              {isAr ? 'نوع الجهاز' : 'Device type'}
+            </AppText>
+            <View style={styles.typeRow}>
+              {TYPE_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  onPress={() => setAddType(opt.key)}
+                  style={[styles.typeBtn, addType === opt.key && { backgroundColor: colors.primary + '15', borderColor: colors.primary }]}
+                >
+                  <Ionicons name={DEVICE_ICONS[opt.key] as any} size={18} color={addType === opt.key ? colors.primary : colors.textSecondary} />
+                  <AppText style={{ fontSize: 11, fontWeight: '700', color: addType === opt.key ? colors.primary : colors.textSecondary }}>
+                    {isAr ? opt.labelAr : opt.labelEn}
+                  </AppText>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity onPress={() => setShowAddModal(false)} style={[styles.modalBtn, { backgroundColor: colors.textSecondary + '15' }]}>
+                <AppText style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 14 }}>{t.cancel}</AppText>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleAddDevice} style={[styles.modalBtn, { backgroundColor: colors.primary }]}>
+                <AppText style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{isAr ? 'إضافة' : 'Add'}</AppText>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ═══ RENAME MODAL ═══ */}
+      <Modal visible={renameTarget !== null} transparent animationType="fade" onRequestClose={() => setRenameTarget(null)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setRenameTarget(null)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: darkMode ? '#1E293B' : '#fff' }]} onPress={() => {}}>
+            <AppText style={[styles.modalTitle, { color: colors.textPrimary }]}>
+              {isAr ? 'إعادة تسمية' : 'Rename Device'}
+            </AppText>
+            <TextInput
+              value={renameTxt}
+              onChangeText={setRenameTxt}
+              placeholder={isAr ? 'الاسم الجديد' : 'New name'}
+              placeholderTextColor={colors.textSecondary}
+              autoFocus
+              style={[styles.modalInput, { color: colors.textPrimary, borderColor: colors.textSecondary + '30', backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : '#F8FAFC' }]}
+            />
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity onPress={() => setRenameTarget(null)} style={[styles.modalBtn, { backgroundColor: colors.textSecondary + '15' }]}>
+                <AppText style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 14 }}>{t.cancel}</AppText>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleRenameSubmit} style={[styles.modalBtn, { backgroundColor: colors.primary }]}>
+                <AppText style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{isAr ? 'حفظ' : 'Save'}</AppText>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -572,5 +716,82 @@ const styles = StyleSheet.create({
   addDeviceText: {
     fontSize: 13,
     fontWeight: '700',
+  },
+  // ── Device actions ──
+  deviceActions: {
+    flexDirection: 'column',
+    gap: 4,
+    marginLeft: 4,
+  },
+  deviceActBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyDevices: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+    gap: 8,
+  },
+  // ── Modals ──
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 22,
+    padding: 24,
+    gap: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  modalSubLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  modalInput: {
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  typeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  typeBtn: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(128,128,128,0.15)',
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

@@ -1,6 +1,9 @@
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
+import type {
+  CompositeScreenProps,
+  NavigatorScreenParams,
+} from "@react-navigation/native";
 
 // ─── Auth Stack ──────────────────────────────────────────────
 export type AuthStackParamList = {
@@ -28,6 +31,7 @@ export type MainStackParamList = {
 };
 
 // ─── Profile Stack (nested inside Profile tab) ──────────────
+// ─── Profile Stack (nested inside Profile tab) ──────────────
 export type ProfileStackParamList = {
   ProfileMain: undefined;
   Settings: undefined;
@@ -35,8 +39,9 @@ export type ProfileStackParamList = {
   EmergencyProfile: undefined;
   ChangePassword: undefined;
   Privacy: undefined;
+  TermsOfService: undefined; // ← مش TermsOfServiceScreen
+  PrivacyPolicy: undefined;
 };
-
 // ─── Screen-prop helpers ────────────────────────────────────
 export type AuthScreenProps<T extends keyof AuthStackParamList> =
   NativeStackScreenProps<AuthStackParamList, T>;

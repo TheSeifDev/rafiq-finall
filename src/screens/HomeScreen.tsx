@@ -22,6 +22,7 @@ import { vitalsService, type VitalsRecord } from '../services/vitals.service';
 import { medicationService, type Medication } from '../services/medication.service';
 import { notificationService, type AppNotification } from '../services/notification.service';
 import { translations } from '../constants/translations';
+import { generateRealisticWeek, buildWeeklyAnalytics } from '../utils/vitalsAnalytics';
 import type { MainTabParamList, MainStackParamList } from '../navigation/types';
 
 type Props = CompositeScreenProps<
@@ -31,11 +32,6 @@ type Props = CompositeScreenProps<
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ── Mock chart data (fallback when no real data) ──
-const MOCK_HEART_RATES = [72, 78, 74, 80, 76, 73, 77];
-const MOCK_BP_SYS = [118, 122, 120, 125, 119, 121, 118];
-const DAYS_AR = ['سبت', 'أحد', 'اثن', 'ثلا', 'أرب', 'خمي', 'جمع'];
-const DAYS_EN = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
 // ── Mini sparkline chart component ──
 function MiniChart({
@@ -229,6 +225,98 @@ function MedRow({
   );
 }
 
+// ── Weekly trend card (analytics-powered) ──
+function WeeklyTrendCard({
+  language,
+  darkMode,
+  surfaceColor,
+  cardBorder,
+  colors,
+  t,
+}: {
+  language: string;
+  darkMode: boolean;
+  surfaceColor: string;
+  cardBorder: string;
+  colors: any;
+  t: any;
+}) {
+  const week = useMemo(() => {
+    const isAr = language === 'ar';
+    const days = generateRealisticWeek(74, 120, 78, isAr);
+    return buildWeeklyAnalytics(days);
+  }, [language]);
+
+  const hrData = week.days.map((d) => d.hr);
+  const bpData = week.days.map((d) => d.sys);
+  const dayNames = week.days.map((d) => d.day);
+
+  const mutedColor = darkMode ? '#64748B' : '#94A3B8';
+
+  return (
+    <View style={[styles.chartCard, { backgroundColor: surfaceColor, borderColor: cardBorder }]}>
+      {/* Stats summary */}
+      <View style={styles.trendStatsRow}>
+        <View style={styles.trendStat}>
+          <AppText style={[styles.trendStatLabel, { color: mutedColor }]}>
+            {language === 'ar' ? 'المتوسط' : 'Avg'}
+          </AppText>
+          <AppText style={[styles.trendStatVal, { color: '#EF4444' }]}>{week.hr.avg}</AppText>
+          <AppText style={[styles.trendStatUnit, { color: mutedColor }]}>{t.bpm}</AppText>
+        </View>
+        <View style={[styles.trendStatDiv, { backgroundColor: cardBorder }]} />
+        <View style={styles.trendStat}>
+          <AppText style={[styles.trendStatLabel, { color: mutedColor }]}>
+            {language === 'ar' ? 'الأعلى' : 'High'}
+          </AppText>
+          <AppText style={[styles.trendStatVal, { color: '#F59E0B' }]}>{week.hr.max}</AppText>
+          <AppText style={[styles.trendStatUnit, { color: mutedColor }]}>{t.bpm}</AppText>
+        </View>
+        <View style={[styles.trendStatDiv, { backgroundColor: cardBorder }]} />
+        <View style={styles.trendStat}>
+          <AppText style={[styles.trendStatLabel, { color: mutedColor }]}>
+            {language === 'ar' ? 'الأدنى' : 'Low'}
+          </AppText>
+          <AppText style={[styles.trendStatVal, { color: '#10B981' }]}>{week.hr.min}</AppText>
+          <AppText style={[styles.trendStatUnit, { color: mutedColor }]}>{t.bpm}</AppText>
+        </View>
+      </View>
+
+      {/* Sparklines */}
+      <View style={styles.chartRow}>
+        <View style={styles.chartCol}>
+          <View style={styles.chartLabelRow}>
+            <View style={[styles.chartDot, { backgroundColor: '#EF4444' }]} />
+            <AppText style={[styles.chartLabel, { color: colors.textSecondary }]}>
+              {t.heartRate}
+            </AppText>
+          </View>
+          <MiniChart data={hrData} color="#EF4444" />
+        </View>
+        <View style={styles.chartDivider} />
+        <View style={styles.chartCol}>
+          <View style={styles.chartLabelRow}>
+            <View style={[styles.chartDot, { backgroundColor: '#0077C8' }]} />
+            <AppText style={[styles.chartLabel, { color: colors.textSecondary }]}>
+              {t.bloodPressure}
+            </AppText>
+          </View>
+          <MiniChart data={bpData} color="#0077C8" />
+        </View>
+      </View>
+
+      {/* Day labels */}
+      <View style={styles.chartDays}>
+        {dayNames.map((d, i) => (
+          <AppText key={`${d}-${i}`} style={[styles.chartDayText, { color: colors.textSecondary }]}>
+            {d}
+          </AppText>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 // ── Main HomeScreen ──
 export function HomeScreen({ navigation }: Props): React.JSX.Element {
   const session = useAuthStore((s) => s.session);
@@ -383,41 +471,19 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
           </View>
         </View>
 
-        {/* ── CHARTS ── */}
+        {/* ── WEEKLY TRENDS ── */}
         <View style={styles.section}>
           <AppText style={[styles.sectionTitle, { color: colors.textPrimary }]}>
             {t.weeklyTrend}
           </AppText>
-          <View style={[styles.chartCard, { backgroundColor: surfaceColor, borderColor: cardBorder }]}>
-            <View style={styles.chartRow}>
-              <View style={styles.chartCol}>
-                <View style={styles.chartLabelRow}>
-                  <View style={[styles.chartDot, { backgroundColor: '#EF4444' }]} />
-                  <AppText style={[styles.chartLabel, { color: colors.textSecondary }]}>
-                    {t.heartRate}
-                  </AppText>
-                </View>
-                <MiniChart data={MOCK_HEART_RATES} color="#EF4444" />
-              </View>
-              <View style={styles.chartDivider} />
-              <View style={styles.chartCol}>
-                <View style={styles.chartLabelRow}>
-                  <View style={[styles.chartDot, { backgroundColor: '#0077C8' }]} />
-                  <AppText style={[styles.chartLabel, { color: colors.textSecondary }]}>
-                    {t.bloodPressure}
-                  </AppText>
-                </View>
-                <MiniChart data={MOCK_BP_SYS} color="#0077C8" />
-              </View>
-            </View>
-            <View style={styles.chartDays}>
-              {(language === 'ar' ? DAYS_AR : DAYS_EN).map((d) => (
-                <AppText key={d} style={[styles.chartDayText, { color: colors.textSecondary }]}>
-                  {d}
-                </AppText>
-              ))}
-            </View>
-          </View>
+          <WeeklyTrendCard
+            language={language}
+            darkMode={darkMode}
+            surfaceColor={surfaceColor}
+            cardBorder={cardBorder}
+            colors={colors}
+            t={t}
+          />
         </View>
 
         {/* ── QUICK ACTIONS ── */}
@@ -622,6 +688,36 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: spacing.md,
     gap: spacing.md,
+  },
+  trendStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  trendStat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  trendStatLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  trendStatVal: {
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  trendStatUnit: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  trendStatDiv: {
+    width: 1,
+    height: 28,
+    borderRadius: 1,
   },
   chartRow: {
     flexDirection: 'row',

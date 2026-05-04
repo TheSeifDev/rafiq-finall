@@ -20,6 +20,8 @@ import { NotificationSettingsScreen } from '../screens/NotificationSettingsScree
 import { BottomTabBar } from '../components/ui/BottomTabBar';
 import { useAppStore } from '../store/app.store';
 import { translations } from '../constants/translations';
+import { PrivacyPolicyScreen } from '../screens/PrivacyPolicyScreen';
+import { TermsOfServiceScreen } from '../screens/TermsOfServiceScreen';
 import type { MainTabParamList, MainStackParamList, ProfileStackParamList } from './types';
 
 // ─── Module-level navigation ref ─────────────────────────────
@@ -39,10 +41,12 @@ function ProfileStackNavigator(): React.JSX.Element {
       <ProfileStackNav.Screen name="EmergencyProfile" component={EmergencyProfileScreen} options={{ animation: 'slide_from_right' }} />
       <ProfileStackNav.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ animation: 'slide_from_right' }} />
       <ProfileStackNav.Screen name="Privacy" component={PrivacyScreen} options={{ animation: 'slide_from_right' }} />
+      {/* ADD THESE TWO ↓ */}
+      <ProfileStackNav.Screen name="TermsOfService" component={TermsOfServiceScreen} options={{ animation: 'slide_from_right' }} />
+      <ProfileStackNav.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} options={{ animation: 'slide_from_right' }} />
     </ProfileStackNav.Navigator>
   );
 }
-
 // ─── Bottom Tabs ─────────────────────────────────────────────
 function MainTabs(): React.JSX.Element {
   const language = useAppStore((s) => s.language);

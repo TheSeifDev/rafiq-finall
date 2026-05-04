@@ -20,12 +20,14 @@
     "date-fns": "^3.0.6",
     "expo": "~54.0.33",
     "expo-asset": "~12.0.12",
+    "expo-file-system": "^55.0.17",
     "expo-font": "~14.0.11",
     "expo-local-authentication": "~17.0.8",
     "expo-localization": "~17.0.8",
     "expo-location": "~19.0.8",
-    "expo-notifications": "~0.32.16",
+    "expo-notifications": "^0.32.17",
     "expo-screen-orientation": "~9.0.9",
+    "expo-sharing": "^55.0.18",
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "expo-updates": "~29.0.16",
@@ -37,6 +39,7 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-url-polyfill": "^3.0.0",
+    "xlsx": "^0.18.5",
     "zustand": "^4.4.7"
   },
   "devDependencies": {

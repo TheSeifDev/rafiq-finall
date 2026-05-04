@@ -1,35 +1,37 @@
-import React, { useState } from 'react';
-import { ScrollView, View, StyleSheet, TouchableOpacity, Switch } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  ScrollView,
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Switch,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import { Screen } from '../components/ui/Screen';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
 import { AppText } from '../components/ui/AppText';
 import { spacing } from '../theme';
 import { useTheme } from '../theme/useTheme';
 import { useAppStore } from '../store/app.store';
+import { useAuthStore } from '../store/auth.store';
 import { translations } from '../constants/translations';
+import { supabase } from '../lib/supabase';
+import { patientService } from '../services/patient.service';
+import { exportHealthData } from '../services/export.service';
 import type { ProfileStackScreenProps } from '../navigation/types';
 
 type Props = ProfileStackScreenProps<'Privacy'>;
 
+// ── InfoRow (reusable UI row) ──
 function InfoRow({
-  icon,
-  iconColor,
-  title,
-  description,
-  rightContent,
-  isLast,
-  darkMode,
-  colors,
+  icon, iconColor, title, description, rightContent, isLast, darkMode, colors,
 }: {
-  icon: string;
-  iconColor: string;
-  title: string;
-  description?: string;
-  rightContent?: React.ReactNode;
-  isLast?: boolean;
-  darkMode: boolean;
-  colors: any;
+  icon: string; iconColor: string; title: string; description?: string;
+  rightContent?: React.ReactNode; isLast?: boolean; darkMode: boolean; colors: any;
 }) {
   const dividerColor = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
   return (
@@ -48,18 +50,147 @@ function InfoRow({
   );
 }
 
+// ── Main Screen ──
 export function PrivacyScreen({ navigation }: Props): React.JSX.Element {
   const { colors, darkMode } = useTheme();
   const language = useAppStore((s) => s.language);
   const t = translations[language] as any;
+  const isAr = language === 'ar';
+  const session = useAuthStore((s) => s.session);
+  const signOut = useAuthStore((s) => s.signOut);
 
+  // ── Persisted health consent from zustand store ──
+  const healthDataConsent = useAppStore((s) => s.healthDataConsent);
+  const setHealthDataConsent = useAppStore((s) => s.setHealthDataConsent);
+
+  // ── Permission states — synced with device on mount ──
   const [locationEnabled, setLocationEnabled] = useState(false);
-  const [healthEnabled, setHealthEnabled] = useState(true);
-  const [notifEnabled, setNotifEnabled] = useState(true);
+  const [notifEnabled, setNotifEnabled] = useState(false);
+
+  // ── Loading states ──
+  const [exporting, setExporting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const surfaceBg = darkMode ? 'rgba(30, 41, 59, 0.80)' : 'rgba(255, 255, 255, 0.92)';
   const cardBorder = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
 
+  // ── Check real permission status on mount ──
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status: locStatus } = await Location.getForegroundPermissionsAsync();
+        setLocationEnabled(locStatus === 'granted');
+      } catch { /* Expo Go safe */ }
+
+      try {
+        const { status: notifStatus } = await Notifications.getPermissionsAsync();
+        setNotifEnabled(notifStatus === 'granted');
+      } catch { /* Expo Go safe */ }
+    })();
+  }, []);
+
+  // ── Toggle Location Permission ──
+  const handleLocationToggle = useCallback(async (val: boolean) => {
+    if (val) {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      setLocationEnabled(status === 'granted');
+      if (status !== 'granted') {
+        Alert.alert(
+          isAr ? 'مرفوض' : 'Denied',
+          isAr ? 'يرجى تفعيل الموقع من الإعدادات' : 'Please enable location in Settings',
+        );
+      }
+    } else {
+      Alert.alert(
+        isAr ? 'ملاحظة' : 'Note',
+        isAr ? 'لإيقاف الموقع، عطّله من إعدادات الجهاز' : 'To revoke, disable in device Settings',
+      );
+    }
+  }, [isAr]);
+
+  // ── Toggle Notification Permission ──
+  const handleNotifToggle = useCallback(async (val: boolean) => {
+    if (val) {
+      const { status } = await Notifications.requestPermissionsAsync();
+      setNotifEnabled(status === 'granted');
+      if (status !== 'granted') {
+        Alert.alert(
+          isAr ? 'مرفوض' : 'Denied',
+          isAr ? 'يرجى تفعيل الإشعارات من الإعدادات' : 'Please enable notifications in Settings',
+        );
+      }
+    } else {
+      Alert.alert(
+        isAr ? 'ملاحظة' : 'Note',
+        isAr ? 'لإيقاف الإشعارات، عطّلها من إعدادات الجهاز' : 'To revoke, disable in device Settings',
+      );
+    }
+  }, [isAr]);
+
+  // ── Export Data (delegates to export.service.ts) ──
+  const handleExport = useCallback(async () => {
+    if (!session?.user.id) return;
+    setExporting(true);
+    try {
+      const result = await exportHealthData(session.user.id, isAr);
+      if (!result.success) {
+        Alert.alert(isAr ? 'خطأ' : 'Error', result.error);
+      }
+    } catch (err: any) {
+      Alert.alert(isAr ? 'خطأ' : 'Error', err?.message ?? 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }, [session, isAr]);
+
+  // ── Delete Account (real Supabase cascade) ──
+  const handleDeleteAccount = useCallback(() => {
+    Alert.alert(
+      t.deleteAccount,
+      isAr ? 'سيتم حذف جميع بياناتك نهائياً. هل أنت متأكد؟' : 'All your data will be permanently deleted. Are you sure?',
+      [
+        { text: t.cancel, style: 'cancel' },
+        {
+          text: t.confirm,
+          style: 'destructive',
+          onPress: async () => {
+            if (!session?.user.id) return;
+            setDeleting(true);
+            try {
+              const userId = session.user.id;
+              const patientId = await patientService.getPatientId(userId);
+
+              if (patientId) {
+                // Delete dependent rows first (FK order)
+                await supabase.from('vitals').delete().eq('patient_id', patientId);
+                await supabase.from('medications').delete().eq('patient_id', patientId);
+                await supabase.from('patient_conditions').delete().eq('patient_id', patientId);
+                await supabase.from('emergency_contacts').delete().eq('patient_id', patientId);
+                await supabase.from('patients').delete().eq('id', patientId);
+              }
+
+              // Delete notifications
+              await supabase.from('notifications').delete().eq('user_id', userId);
+
+              // Sign out
+              await signOut();
+
+              Alert.alert(
+                isAr ? 'تم الحذف' : 'Account Deleted',
+                isAr ? 'تم حذف جميع بياناتك' : 'All your data has been removed',
+              );
+            } catch (err: any) {
+              Alert.alert(isAr ? 'خطأ' : 'Error', err?.message ?? 'Delete failed');
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [session, signOut, t, isAr]);
+
+  // ── Switch factory ──
   const makeSwitch = (val: boolean, onChange: (v: boolean) => void) => (
     <Switch
       value={val}
@@ -72,68 +203,57 @@ export function PrivacyScreen({ navigation }: Props): React.JSX.Element {
   return (
     <Screen>
       <ScreenHeader title={t.privacyLabel} onBack={() => navigation.goBack()} />
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scroll}
-      >
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+
         {/* ── Data Usage ── */}
         <View style={styles.sectionWrap}>
-          <AppText style={[styles.sectionLabel, { color: colors.textSecondary }]}>
-            {t.dataUsage}
-          </AppText>
+          <AppText style={[styles.sectionLabel, { color: colors.textSecondary }]}>{t.dataUsage}</AppText>
           <View style={[styles.card, { backgroundColor: surfaceBg, borderColor: cardBorder }]}>
             <View style={styles.dataUsageContent}>
               <Ionicons name="shield-checkmark-outline" size={32} color={colors.success} />
-              <AppText style={[styles.dataUsageText, { color: colors.textPrimary }]}>
-                {t.dataUsageDesc}
-              </AppText>
+              <AppText style={[styles.dataUsageText, { color: colors.textPrimary }]}>{t.dataUsageDesc}</AppText>
             </View>
           </View>
         </View>
 
         {/* ── Permissions ── */}
         <View style={styles.sectionWrap}>
-          <AppText style={[styles.sectionLabel, { color: colors.textSecondary }]}>
-            {t.permissions}
-          </AppText>
+          <AppText style={[styles.sectionLabel, { color: colors.textSecondary }]}>{t.permissions}</AppText>
           <View style={[styles.card, { backgroundColor: surfaceBg, borderColor: cardBorder }]}>
             <InfoRow
-              icon="location-outline"
-              iconColor="#0EA5E9"
+              icon="location-outline" iconColor="#0EA5E9"
               title={t.locationPerm}
-              darkMode={darkMode}
-              colors={colors}
-              rightContent={makeSwitch(locationEnabled, setLocationEnabled)}
+              description={locationEnabled ? (isAr ? 'مفعّل' : 'Granted') : (isAr ? 'غير مفعّل' : 'Not granted')}
+              darkMode={darkMode} colors={colors}
+              rightContent={makeSwitch(locationEnabled, handleLocationToggle)}
             />
             <InfoRow
-              icon="heart-outline"
-              iconColor="#EF4444"
+              icon="heart-outline" iconColor="#EF4444"
               title={t.healthPerm}
-              darkMode={darkMode}
-              colors={colors}
-              rightContent={makeSwitch(healthEnabled, setHealthEnabled)}
+              description={isAr ? 'الموافقة على تخزين بيانات صحية' : 'Consent to store health data'}
+              darkMode={darkMode} colors={colors}
+              rightContent={makeSwitch(healthDataConsent, setHealthDataConsent)}
             />
             <InfoRow
-              icon="notifications-outline"
-              iconColor="#F59E0B"
+              icon="notifications-outline" iconColor="#F59E0B"
               title={t.notifPerm}
-              darkMode={darkMode}
-              colors={colors}
-              isLast
-              rightContent={makeSwitch(notifEnabled, setNotifEnabled)}
+              description={notifEnabled ? (isAr ? 'مفعّل' : 'Granted') : (isAr ? 'غير مفعّل' : 'Not granted')}
+              darkMode={darkMode} colors={colors} isLast
+              rightContent={makeSwitch(notifEnabled, handleNotifToggle)}
             />
           </View>
         </View>
 
         {/* ── Data Actions ── */}
         <View style={styles.sectionWrap}>
-          <AppText style={[styles.sectionLabel, { color: colors.textSecondary }]}>
-            {t.healthData}
-          </AppText>
+          <AppText style={[styles.sectionLabel, { color: colors.textSecondary }]}>{t.healthData}</AppText>
           <View style={[styles.card, { backgroundColor: surfaceBg, borderColor: cardBorder }]}>
-            <TouchableOpacity activeOpacity={0.6} style={styles.actionRow}>
+            {/* Export */}
+            <TouchableOpacity activeOpacity={0.6} style={styles.actionRow} onPress={handleExport} disabled={exporting}>
               <View style={[styles.infoIconWrap, { backgroundColor: colors.primary + '12' }]}>
-                <Ionicons name="download-outline" size={18} color={colors.primary} />
+                {exporting
+                  ? <ActivityIndicator size="small" color={colors.primary} />
+                  : <Ionicons name="download-outline" size={18} color={colors.primary} />}
               </View>
               <View style={styles.infoContent}>
                 <AppText style={[styles.infoTitle, { color: colors.textPrimary }]}>{t.exportData}</AppText>
@@ -141,9 +261,18 @@ export function PrivacyScreen({ navigation }: Props): React.JSX.Element {
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.textSecondary + '60'} />
             </TouchableOpacity>
-            <TouchableOpacity activeOpacity={0.6} style={[styles.actionRow, { borderTopWidth: 1, borderTopColor: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
+
+            {/* Delete Account */}
+            <TouchableOpacity
+              activeOpacity={0.6}
+              onPress={handleDeleteAccount}
+              disabled={deleting}
+              style={[styles.actionRow, { borderTopWidth: 1, borderTopColor: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}
+            >
               <View style={[styles.infoIconWrap, { backgroundColor: colors.danger + '12' }]}>
-                <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                {deleting
+                  ? <ActivityIndicator size="small" color={colors.danger} />
+                  : <Ionicons name="trash-outline" size={18} color={colors.danger} />}
               </View>
               <View style={styles.infoContent}>
                 <AppText style={[styles.infoTitle, { color: colors.danger }]}>{t.deleteAccount}</AppText>
@@ -157,13 +286,13 @@ export function PrivacyScreen({ navigation }: Props): React.JSX.Element {
         {/* ── Legal ── */}
         <View style={styles.sectionWrap}>
           <View style={[styles.card, { backgroundColor: surfaceBg, borderColor: cardBorder }]}>
-            <TouchableOpacity activeOpacity={0.6} style={styles.legalRow}>
+            <TouchableOpacity activeOpacity={0.6} style={styles.legalRow} onPress={() => navigation.navigate('TermsOfService')}>
               <Ionicons name="document-text-outline" size={18} color={colors.textSecondary} />
               <AppText style={[styles.legalText, { color: colors.textPrimary }]}>{t.termsOfService}</AppText>
               <Ionicons name="chevron-forward" size={16} color={colors.textSecondary + '60'} />
             </TouchableOpacity>
             <View style={{ height: 1, backgroundColor: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }} />
-            <TouchableOpacity activeOpacity={0.6} style={styles.legalRow}>
+            <TouchableOpacity activeOpacity={0.6} style={styles.legalRow} onPress={() => navigation.navigate('PrivacyPolicy')}>
               <Ionicons name="lock-closed-outline" size={18} color={colors.textSecondary} />
               <AppText style={[styles.legalText, { color: colors.textPrimary }]}>{t.privacyPolicy}</AppText>
               <Ionicons name="chevron-forward" size={16} color={colors.textSecondary + '60'} />

@@ -1,56 +1,90 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   ScrollView,
   View,
   StyleSheet,
   ActivityIndicator,
-  Dimensions,
   TouchableOpacity,
+  useWindowDimensions,
+  Alert,
 } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../components/ui/Screen';
-import { AppCard } from '../components/ui/AppCard';
 import { AppText } from '../components/ui/AppText';
 import { useAuthStore } from '../store/auth.store';
 import { patientService } from '../services/patient.service';
 import { vitalsService, type VitalsRecord } from '../services/vitals.service';
 import { BluetoothService } from '../services/bluetooth.service';
 import { useLocale } from '../hooks/useLocale';
+import {
+  generateRealisticWeek,
+  buildWeeklyAnalytics,
+  recordsToDays,
+  type WeeklyAnalytics,
+} from '../utils/vitalsAnalytics';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-
-const C = {
-  bg: '#0B1120',
-  card: '#151E2E',
-  cardBorder: '#1E293B',
+/* ── Design tokens ─────────────────────────────────────────── */
+const P = {
+  bg: '#0A0F1C',
+  card: '#111827',
+  cardBorder: '#1F2937',
+  glass: 'rgba(255,255,255,0.03)',
   primary: '#06B6D4',
-  primarySoft: 'rgba(6,182,212,0.12)',
+  primaryDim: 'rgba(6,182,212,0.10)',
   text: '#F1F5F9',
-  textMuted: '#94A3B8',
+  muted: '#94A3B8',
+  dim: '#64748B',
   success: '#10B981',
-  successSoft: 'rgba(16,185,129,0.12)',
+  successDim: 'rgba(16,185,129,0.10)',
   danger: '#EF4444',
-  dangerSoft: 'rgba(239,68,68,0.12)',
-  warning: '#F59E0B',
-  warningSoft: 'rgba(245,158,11,0.12)',
-  purple: '#8B5CF6',
-  purpleSoft: 'rgba(139,92,246,0.12)',
+  dangerDim: 'rgba(239,68,68,0.10)',
+  amber: '#F59E0B',
+  amberDim: 'rgba(245,158,11,0.08)',
   rose: '#F43F5E',
-  roseSoft: 'rgba(244,63,94,0.12)',
+  roseDim: 'rgba(244,63,94,0.10)',
+  purple: '#8B5CF6',
+  purpleDim: 'rgba(139,92,246,0.10)',
+  orange: '#F97316',
+  orangeDim: 'rgba(249,115,22,0.10)',
 };
 
+/* ── Vital card config ─────────────────────────────────────── */
+const VITAL_CARDS = [
+  { key: 'hr',   icon: 'heart',       color: P.rose,   bg: P.roseDim,    labelKey: 'heartRate', unitKey: 'bpm' },
+  { key: 'bp',   icon: 'fitness',     color: P.orange,  bg: P.orangeDim,  labelKey: 'bp',        unitKey: 'mmHg' },
+  { key: 'spo2', icon: 'water',       color: P.primary, bg: P.primaryDim, labelKey: 'spo2',      unitKey: 'percent' },
+  { key: 'temp', icon: 'thermometer', color: P.purple,  bg: P.purpleDim,  labelKey: 'temp',      unitKey: 'celsius' },
+] as const;
+
+function getVitalDisplay(key: string, data: Partial<VitalsRecord> | null): string {
+  if (!data) return '--';
+  switch (key) {
+    case 'hr':   return data.heart_rate != null ? `${data.heart_rate}` : '--';
+    case 'bp':   return data.blood_pressure_systolic && data.blood_pressure_diastolic
+                        ? `${data.blood_pressure_systolic}/${data.blood_pressure_diastolic}` : '--';
+    case 'spo2': return data.oxygen_saturation != null ? `${data.oxygen_saturation}` : '--';
+    case 'temp': return data.temperature != null ? `${data.temperature}` : '--';
+    default:     return '--';
+  }
+}
+
+/* ── Component ─────────────────────────────────────────────── */
 export function VitalsScreen(): React.JSX.Element {
   const { t, isRTL } = useLocale();
-  const session = useAuthStore((state) => state.session);
+  const { width: screenW } = useWindowDimensions();
+  const session = useAuthStore((s) => s.session);
+  const bt = useRef(new BluetoothService()).current;
 
   const [records, setRecords] = useState<VitalsRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [connectedDevice, setConnectedDevice] = useState<string | null>(null);
-  const [watchData, setWatchData] = useState<Partial<VitalsRecord> | null>(null);
+  const [device, setDevice] = useState<string | null>(null);
+  const [live, setLive] = useState<Partial<VitalsRecord> | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
+  /* ── Load history ── */
   const load = useCallback(async () => {
     if (!session?.user.id) return;
     try {
@@ -59,517 +93,478 @@ export function VitalsScreen(): React.JSX.Element {
       if (!profile) return;
       const data = await vitalsService.getVitalsHistory(profile.id);
       setRecords(data);
-    } finally {
+    } catch { /* silent */ } finally {
       setLoading(false);
     }
   }, [session?.user.id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => () => { bt.destroy(); }, [bt]);
 
-  const chartData = useMemo(() => {
-    const points = records.slice(0, 7).reverse();
-    return {
-      labels: points.map((item) => item.recorded_at.slice(5, 10)),
-      datasets: [{ data: points.map((item) => item.heart_rate ?? 0) }],
-    };
-  }, [records]);
+  /* ── Weekly analytics pipeline ── */
+  const analytics: WeeklyAnalytics = useMemo(() => {
+    if (records.length >= 2) {
+      const days = recordsToDays(records, isRTL);
+      return buildWeeklyAnalytics(days);
+    }
+    // Fallback: realistic generated week
+    return buildWeeklyAnalytics(generateRealisticWeek(74, 120, 78, isRTL));
+  }, [records, isRTL]);
 
-  const hasChartData = chartData.datasets[0].data.length > 0;
+  const isRealData = records.length >= 2;
+  const hasChart = analytics.days.length > 0 && analytics.hr.max > 0;
 
-  const handleConnect = async () => {
+  /* ── Connect ── */
+  const handleConnect = useCallback(async () => {
     setConnecting(true);
+    setError(null);
     try {
-      const service = new BluetoothService();
-      const devices = await service.scanForDevices();
-      if (devices[0]) {
-        await service.connectToDevice(devices[0].id);
-        setConnectedDevice(devices[0].name || devices[0].id);
-        setWatchData({
-          heart_rate: 72,
-          blood_pressure_systolic: 120,
-          blood_pressure_diastolic: 80,
-          oxygen_saturation: 98,
-          temperature: 36.6,
-        });
+      const devs = await bt.scanForDevices();
+      if (!devs.length) {
+        setError(isRTL ? 'لم يتم العثور على أجهزة' : 'No devices found');
+        return;
       }
-    } catch (e) {
-      console.error(e);
+      await bt.connectToDevice(devs[0].id);
+      setDevice(devs[0].name);
+      const v = await bt.readVitals();
+      setLive({
+        heart_rate: v.heart_rate,
+        blood_pressure_systolic: v.blood_pressure_systolic,
+        blood_pressure_diastolic: v.blood_pressure_diastolic,
+        oxygen_saturation: v.oxygen_saturation,
+        temperature: v.temperature,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : (isRTL ? 'فشل الاتصال' : 'Connection failed'));
     } finally {
       setConnecting(false);
     }
-  };
+  }, [bt, isRTL]);
 
-  const handleDisconnect = () => {
-    setConnectedDevice(null);
-    setWatchData(null);
-  };
+  const handleDisconnect = useCallback(async () => {
+    await bt.disconnect();
+    setDevice(null);
+    setLive(null);
+    setError(null);
+  }, [bt]);
 
-  const handleSave = async () => {
-    if (!session?.user.id || !watchData) return;
+  const handleSave = useCallback(async () => {
+    if (!session?.user.id || !live) return;
     try {
       setSaving(true);
       const profile = await patientService.getProfile(session.user.id);
       if (!profile) return;
       await vitalsService.saveVitals({
         patient_id: profile.id,
-        heart_rate: watchData.heart_rate ?? null,
-        blood_pressure_systolic: watchData.blood_pressure_systolic ?? null,
-        blood_pressure_diastolic: watchData.blood_pressure_diastolic ?? null,
-        oxygen_saturation: watchData.oxygen_saturation ?? null,
-        temperature: watchData.temperature ?? null,
-        source: 'bluetooth',
+        heart_rate: live.heart_rate ?? null,
+        blood_pressure_systolic: live.blood_pressure_systolic ?? null,
+        blood_pressure_diastolic: live.blood_pressure_diastolic ?? null,
+        oxygen_saturation: live.oxygen_saturation ?? null,
+        temperature: live.temperature ?? null,
+        source: bt.isSimulated ? 'manual' : 'bluetooth',
         recorded_at: new Date().toISOString(),
       });
       await load();
+      Alert.alert('', isRTL ? 'تم حفظ القراءة بنجاح' : 'Reading saved successfully');
+    } catch {
+      Alert.alert('', isRTL ? 'فشل حفظ القراءة' : 'Failed to save reading');
     } finally {
       setSaving(false);
     }
-  };
+  }, [session?.user.id, live, bt.isSimulated, load, isRTL]);
 
-  const vitals = [
-    { label: t('heartRate'), value: watchData?.heart_rate, unit: t('bpm'), icon: 'pulse', color: C.rose, bg: C.roseSoft },
-    { label: t('bp'), value: watchData?.blood_pressure_systolic && watchData?.blood_pressure_diastolic ? `${watchData.blood_pressure_systolic}/${watchData.blood_pressure_diastolic}` : '--', unit: t('mmHg'), icon: 'fitness', color: C.warning, bg: C.warningSoft },
-    { label: t('spo2'), value: watchData?.oxygen_saturation, unit: t('percent'), icon: 'water', color: C.primary, bg: C.primarySoft },
-    { label: t('temp'), value: watchData?.temperature, unit: t('celsius'), icon: 'thermometer', color: C.purple, bg: C.purpleSoft },
-  ];
+  /* ── Responsive sizing ── */
+  const chartW = screenW - 64;
+  const chartH = Math.min(200, screenW * 0.48);
 
+  /* ── Render ── */
   return (
-    <Screen style={{ backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+    <Screen style={{ backgroundColor: P.bg }}>
+      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* Header */}
-        <View style={[styles.header, isRTL && styles.rowReverse]}>
-          <View style={[styles.headerText, isRTL && styles.alignEnd]}>
-            <AppText variant="h1" style={[styles.headerTitle, isRTL && styles.textRight]}>{t('vitalsTitle')}</AppText>
-            <AppText style={[styles.headerSubtitle, isRTL && styles.textRight]}>{t('vitalsSubtitle')}</AppText>
+        {/* ── Header ── */}
+        <View style={[s.header, isRTL && s.rowRev]}>
+          <View style={{ flex: 1 }}>
+            <AppText style={[s.h1, isRTL && s.tR]}>{t('vitalsTitle')}</AppText>
+            <AppText style={[s.sub, isRTL && s.tR]}>{t('vitalsSubtitle')}</AppText>
           </View>
-          <View style={[styles.headerIcon, { backgroundColor: C.primarySoft }]}>
-            <Ionicons name="pulse" size={24} color={C.primary} />
+          <View style={[s.headerBadge, { backgroundColor: P.primaryDim }]}>
+            <Ionicons name="pulse" size={22} color={P.primary} />
           </View>
         </View>
 
-        {/* Smartwatch Card */}
-        <AppCard style={styles.card}>
-          <View style={[styles.cardHeader, isRTL && styles.rowReverse]}>
-            <View style={styles.cardHeaderText}>
-              <AppText variant="h2" style={[styles.cardTitle, isRTL && styles.textRight]}>{t('smartwatch')}</AppText>
-              <View style={[styles.badge, isRTL && styles.rowReverse]}>
-                <View style={[styles.dot, { backgroundColor: connectedDevice ? C.success : C.danger }]} />
-                <AppText style={styles.badgeText}>
-                  {connectedDevice ? `${t('connected')} · ${connectedDevice}` : t('disconnected')}
+        {/* ── Expo Go notice ── */}
+        {bt.isSimulated && device && (
+          <View style={s.notice}>
+            <Ionicons name="information-circle-outline" size={15} color={P.amber} />
+            <AppText style={s.noticeText}>
+              {isRTL ? 'وضع العرض التوضيحي — Expo Go' : 'Demo mode — Expo Go'}
+            </AppText>
+          </View>
+        )}
+
+        {/* ── Device Card ── */}
+        <View style={s.card}>
+          <View style={[s.cardRow, isRTL && s.rowRev]}>
+            <View style={{ flex: 1, gap: 3 }}>
+              <AppText style={[s.cardTitle, isRTL && s.tR]}>{t('smartwatch')}</AppText>
+              <View style={[s.statusRow, isRTL && s.rowRev]}>
+                <View style={[s.statusDot, { backgroundColor: device ? P.success : P.dim }]} />
+                <AppText style={s.statusLabel}>
+                  {device ? `${t('connected')} · ${device}` : t('disconnected')}
                 </AppText>
               </View>
             </View>
-            <View style={[styles.iconCircle, { backgroundColor: C.primarySoft }]}>
-              <Ionicons name="watch-outline" size={22} color={C.primary} />
+            <View style={[s.iconCircle, { backgroundColor: P.primaryDim }]}>
+              <Ionicons name="watch-outline" size={20} color={P.primary} />
             </View>
           </View>
 
-          {connectedDevice && watchData ? (
+          {error && (
+            <View style={s.errBanner}>
+              <Ionicons name="alert-circle" size={14} color={P.danger} />
+              <AppText style={s.errText}>{error}</AppText>
+            </View>
+          )}
+
+          {device && live ? (
             <>
-              {/* Live Readings Grid */}
-              <View style={[styles.vitalsGrid, isRTL && styles.rowReverse]}>
-                {vitals.map((v) => (
-                  <View key={v.label} style={[styles.vitalBox, { backgroundColor: v.bg }]}>
-                    <Ionicons name={v.icon as any} size={20} color={v.color} />
-                    <AppText style={[styles.vitalValue, { color: v.color }]}>{v.value ?? '--'}</AppText>
-                    <AppText style={styles.vitalUnit}>{v.unit}</AppText>
-                    <AppText style={styles.vitalLabel}>{v.label}</AppText>
-                  </View>
-                ))}
+              {/* ── Vitals 2×2 Container ── */}
+              <View style={s.gridContainer}>
+                {/* Row 1 */}
+                <View style={[s.gridRow, isRTL && s.rowRev]}>
+                  {VITAL_CARDS.slice(0, 2).map((vc) => (
+                    <View key={vc.key} style={[s.vBox, { backgroundColor: vc.bg, borderColor: vc.color + '30' }]}>
+                      <View style={[s.vBoxHead, isRTL && s.rowRev]}>
+                        <Ionicons name={vc.icon as any} size={16} color={vc.color} />
+                        <AppText style={[s.vLabel, { color: P.muted }]}>{t(vc.labelKey)}</AppText>
+                      </View>
+                      <AppText style={[s.vVal, { color: vc.color }]}>
+                        {getVitalDisplay(vc.key, live)}
+                      </AppText>
+                      <AppText style={s.vUnit}>{t(vc.unitKey)}</AppText>
+                    </View>
+                  ))}
+                </View>
+                {/* Row 2 */}
+                <View style={[s.gridRow, isRTL && s.rowRev]}>
+                  {VITAL_CARDS.slice(2, 4).map((vc) => (
+                    <View key={vc.key} style={[s.vBox, { backgroundColor: vc.bg, borderColor: vc.color + '30' }]}>
+                      <View style={[s.vBoxHead, isRTL && s.rowRev]}>
+                        <Ionicons name={vc.icon as any} size={16} color={vc.color} />
+                        <AppText style={[s.vLabel, { color: P.muted }]}>{t(vc.labelKey)}</AppText>
+                      </View>
+                      <AppText style={[s.vVal, { color: vc.color }]}>
+                        {getVitalDisplay(vc.key, live)}
+                      </AppText>
+                      <AppText style={s.vUnit}>{t(vc.unitKey)}</AppText>
+                    </View>
+                  ))}
+                </View>
               </View>
 
-              {/* Last Updated */}
-              <View style={[styles.lastUpdate, isRTL && styles.rowReverse]}>
-                <View style={[styles.liveDot, { backgroundColor: C.success }]} />
-                <AppText style={styles.lastUpdateText}>{t('liveReading')}</AppText>
+              {/* ── Live indicator ── */}
+              <View style={s.liveRow}>
+                <View style={[s.liveDot, { backgroundColor: P.success }]} />
+                <AppText style={s.liveText}>
+                  {bt.isSimulated
+                    ? (isRTL ? 'قراءة محاكاة' : 'Simulated reading')
+                    : t('liveReading')}
+                </AppText>
               </View>
 
-              {/* Action Buttons */}
-              <View style={[styles.actionRow, isRTL && styles.rowReverse]}>
+              {/* ── Actions ── */}
+              <View style={[s.actionRow, isRTL && s.rowRev]}>
                 <TouchableOpacity
-                  activeOpacity={0.85}
+                  activeOpacity={0.8}
                   onPress={handleSave}
                   disabled={saving}
-                  style={[styles.saveBtn, { backgroundColor: C.success }]}
+                  style={[s.btnPrimary, { backgroundColor: P.success }]}
                 >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <>
-                      <Ionicons name="save-outline" size={16} color="#fff" />
-                      <AppText style={styles.saveBtnText}>{t('saveReading')}</AppText>
-                    </>
-                  )}
+                  {saving
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <>
+                        <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
+                        <AppText style={s.btnText}>{t('saveReading')}</AppText>
+                      </>}
                 </TouchableOpacity>
-
                 <TouchableOpacity
-                  activeOpacity={0.85}
+                  activeOpacity={0.8}
                   onPress={handleDisconnect}
-                  style={[styles.disconnectBtn, { borderColor: C.danger }]}
+                  style={[s.btnOutline, { borderColor: P.danger + '60' }]}
                 >
-                  <Ionicons name="close-circle" size={16} color={C.danger} />
-                  <AppText style={[styles.disconnectBtnText, { color: C.danger }]}>{t('disconnect')}</AppText>
+                  <Ionicons name="power-outline" size={15} color={P.danger} />
+                  <AppText style={[s.btnOutlineText, { color: P.danger }]}>{t('disconnect')}</AppText>
                 </TouchableOpacity>
               </View>
             </>
           ) : (
             <TouchableOpacity
-              activeOpacity={0.85}
+              activeOpacity={0.8}
               onPress={handleConnect}
               disabled={connecting}
-              style={[styles.connectBtn, { backgroundColor: C.primary }]}
+              style={[s.connectBtn, { backgroundColor: P.primary }]}
             >
-              {connecting ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <>
-                  <Ionicons name="bluetooth" size={20} color="#fff" />
-                  <AppText style={styles.connectBtnText}>{t('connectSmartwatch')}</AppText>
-                </>
-              )}
+              {connecting
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <>
+                    <Ionicons name="bluetooth-outline" size={18} color="#fff" />
+                    <AppText style={s.connectBtnText}>{t('connectSmartwatch')}</AppText>
+                  </>}
             </TouchableOpacity>
           )}
-        </AppCard>
+        </View>
 
-        {/* Chart */}
-        <AppCard style={styles.card}>
-          <View style={[styles.cardHeader, isRTL && styles.rowReverse]}>
-            <View style={styles.cardHeaderText}>
-              <AppText variant="h2" style={[styles.cardTitle, isRTL && styles.textRight]}>{t('last7Days')}</AppText>
-              <AppText style={[styles.cardSubtitle, isRTL && styles.textRight]}>{records.length} {t('readings')}</AppText>
+        {/* ── Weekly Insights Card ── */}
+        <View style={s.card}>
+          {/* Header */}
+          <View style={[s.cardRow, isRTL && s.rowRev]}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <AppText style={[s.cardTitle, isRTL && s.tR]}>
+                {isRTL ? 'تحليلات الأسبوع' : 'Weekly Insights'}
+              </AppText>
+              <AppText style={[s.cardSub, isRTL && s.tR]}>
+                {isRealData
+                  ? `${records.length} ${t('readings')}`
+                  : (isRTL ? 'بيانات توضيحية' : 'Sample data')}
+              </AppText>
             </View>
-            <View style={[styles.iconCircle, { backgroundColor: C.purpleSoft }]}>
-              <Ionicons name="trending-up-outline" size={22} color={C.purple} />
+            <View style={[s.iconCircle, { backgroundColor: P.roseDim }]}>
+              <Ionicons name="analytics" size={20} color={P.rose} />
             </View>
           </View>
 
-          {loading ? (
-            <View style={styles.chartLoading}>
-              <ActivityIndicator color={C.primary} />
+          {/* Stats Row */}
+          <View style={[s.statsRow, isRTL && s.rowRev]}>
+            <View style={s.statBox}>
+              <AppText style={s.statLabel}>{isRTL ? 'المتوسط' : 'Avg'}</AppText>
+              <AppText style={[s.statVal, { color: P.primary }]}>{analytics.hr.avg || '--'}</AppText>
+              <AppText style={s.statUnit}>{t('bpm')}</AppText>
             </View>
-          ) : hasChartData ? (
-            <LineChart
-              data={chartData}
-              width={SCREEN_W - 64}
-              height={220}
-              chartConfig={{
-                backgroundColor: 'transparent',
-                backgroundGradientFrom: C.card,
-                backgroundGradientTo: C.card,
-                decimalPlaces: 0,
-                color: (opacity = 1) => `rgba(6, 182, 212, ${opacity})`,
-                labelColor: (opacity = 1) => `rgba(148, 163, 184, ${opacity})`,
-                style: { borderRadius: 16 },
-                propsForDots: { r: '4', strokeWidth: '2', stroke: C.primary, fill: C.bg },
-                propsForBackgroundLines: { stroke: C.cardBorder, strokeDasharray: '4 4' },
-                propsForLabels: { fontSize: 10 },
-              }}
-              bezier
-              style={styles.chart}
-              withInnerLines
-              withOuterLines={false}
-              fromZero={false}
-              segments={4}
-            />
+            <View style={[s.statDivider, { backgroundColor: P.cardBorder }]} />
+            <View style={s.statBox}>
+              <AppText style={s.statLabel}>{isRTL ? 'الأعلى' : 'High'}</AppText>
+              <AppText style={[s.statVal, { color: P.rose }]}>{analytics.hr.max || '--'}</AppText>
+              <AppText style={s.statUnit}>{t('bpm')}</AppText>
+            </View>
+            <View style={[s.statDivider, { backgroundColor: P.cardBorder }]} />
+            <View style={s.statBox}>
+              <AppText style={s.statLabel}>{isRTL ? 'الأدنى' : 'Low'}</AppText>
+              <AppText style={[s.statVal, { color: P.success }]}>{analytics.hr.min || '--'}</AppText>
+              <AppText style={s.statUnit}>{t('bpm')}</AppText>
+            </View>
+          </View>
+
+          {/* Chart */}
+          {loading ? (
+            <View style={[s.chartEmpty, { height: chartH }]}>
+              <ActivityIndicator color={P.primary} />
+            </View>
+          ) : hasChart ? (
+            <View style={{ marginHorizontal: -8 }}>
+              <LineChart
+                data={{
+                  labels: analytics.days.map((d) => d.day),
+                  datasets: [{ data: analytics.days.map((d) => d.hr), color: () => P.rose, strokeWidth: 2.5 }],
+                }}
+                width={chartW}
+                height={chartH}
+                chartConfig={{
+                  backgroundColor: 'transparent',
+                  backgroundGradientFrom: P.card,
+                  backgroundGradientTo: P.card,
+                  decimalPlaces: 0,
+                  color: () => P.rose,
+                  labelColor: () => P.dim,
+                  fillShadowGradientFrom: P.rose,
+                  fillShadowGradientTo: P.card,
+                  fillShadowGradientFromOpacity: 0.25,
+                  fillShadowGradientToOpacity: 0.0,
+                  style: { borderRadius: 16 },
+                  propsForDots: { r: '4', strokeWidth: '2', stroke: P.rose, fill: P.bg },
+                  propsForBackgroundLines: { stroke: P.cardBorder, strokeDasharray: '4 4' },
+                  propsForLabels: { fontSize: 10 },
+                }}
+                bezier
+                style={{ borderRadius: 16 }}
+                withInnerLines
+                withOuterLines={false}
+                fromZero={false}
+                segments={3}
+              />
+            </View>
           ) : (
-            <View style={styles.emptyState}>
-              <View style={[styles.iconCircleLarge, { backgroundColor: 'rgba(148,163,184,0.08)' }]}>
-                <Ionicons name="analytics-outline" size={36} color={C.textMuted} />
-              </View>
-              <AppText style={styles.emptyTitle}>{t('noDataTitle')}</AppText>
-              <AppText style={styles.emptySubtitle}>{t('noChartData')}</AppText>
+            <View style={[s.chartEmpty, { height: chartH }]}>
+              <Ionicons name="analytics-outline" size={32} color={P.dim} />
+              <AppText style={s.emptyText}>{t('noDataTitle')}</AppText>
+              <AppText style={s.emptySub}>{t('noChartData')}</AppText>
             </View>
           )}
-        </AppCard>
 
-        {/* Recent Readings */}
-        {!loading && records.length > 0 && (
-          <View>
-            <AppText variant="h2" style={[styles.sectionTitle, isRTL && styles.textRight]}>{t('recentReadings')}</AppText>
-            <View style={styles.recentList}>
-              {records.slice(0, 5).map((item, idx) => (
-                <AppCard key={idx} style={styles.recentRow}>
-                  <View style={[styles.recentRowInner, isRTL && styles.rowReverse]}>
-                    <View style={[styles.recentIcon, { backgroundColor: C.primarySoft }]}>
-                      <Ionicons name="watch-outline" size={18} color={C.primary} />
-                    </View>
-                    <View style={styles.recentInfo}>
-                      <AppText style={styles.recentMain}>
-                        {item.heart_rate ? `${item.heart_rate} ${t('bpm')}` : ''}
-                        {item.blood_pressure_systolic ? ` · ${item.blood_pressure_systolic}/${item.blood_pressure_diastolic}` : ''}
-                        {item.oxygen_saturation ? ` · ${item.oxygen_saturation}%` : ''}
-                        {item.temperature ? ` · ${item.temperature}°` : ''}
-                      </AppText>
-                      <AppText style={styles.recentDate}>{item.recorded_at.slice(0, 10)} · {t('fromWatch')}</AppText>
-                    </View>
-                    <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={16} color={C.textMuted} />
-                  </View>
-                </AppCard>
-              ))}
+          {/* Legend */}
+          <View style={[s.legendRow, isRTL && s.rowRev]}>
+            <View style={[s.legendItem, isRTL && s.rowRev]}>
+              <View style={[s.legendDot, { backgroundColor: P.rose }]} />
+              <AppText style={s.legendText}>{t('heartRate')}</AppText>
+            </View>
+            <View style={[s.legendItem, isRTL && s.rowRev]}>
+              <View style={[s.legendDot, { backgroundColor: P.orange }]} />
+              <AppText style={s.legendText}>{t('bp')}</AppText>
+            </View>
+            <View style={[s.legendItem, isRTL && s.rowRev]}>
+              <View style={[s.legendDot, { backgroundColor: P.primary }]} />
+              <AppText style={s.legendText}>{t('spo2')}</AppText>
             </View>
           </View>
+        </View>
+
+        {/* ── Recent Readings ── */}
+        {!loading && records.length > 0 && (
+          <View style={{ gap: 10 }}>
+            <AppText style={[s.sectionTitle, isRTL && s.tR]}>{t('recentReadings')}</AppText>
+            {records.slice(0, 5).map((r, i) => (
+              <View key={r.id ?? i} style={s.recentCard}>
+                <View style={[s.recentInner, isRTL && s.rowRev]}>
+                  <View style={[s.recentIcon, { backgroundColor: P.primaryDim }]}>
+                    <Ionicons name="heart-circle-outline" size={18} color={P.primary} />
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <AppText style={[s.recentMain, isRTL && s.tR]} numberOfLines={1}>
+                      {[
+                        r.heart_rate && `${r.heart_rate} ${t('bpm')}`,
+                        r.blood_pressure_systolic && `${r.blood_pressure_systolic}/${r.blood_pressure_diastolic}`,
+                        r.oxygen_saturation && `${r.oxygen_saturation}%`,
+                        r.temperature && `${r.temperature}°`,
+                      ].filter(Boolean).join('  ·  ')}
+                    </AppText>
+                    <AppText style={[s.recentDate, isRTL && s.tR]}>
+                      {r.recorded_at.slice(0, 10)} · {r.source === 'bluetooth' ? t('fromWatch') : (isRTL ? 'يدوي' : 'Manual')}
+                    </AppText>
+                  </View>
+                  <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={14} color={P.dim} />
+                </View>
+              </View>
+            ))}
+          </View>
         )}
+
+        <View style={{ height: 32 }} />
       </ScrollView>
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-    gap: 14,
-    paddingBottom: 40,
-  },
-  rowReverse: { flexDirection: 'row-reverse' },
-  alignEnd: { alignItems: 'flex-end' },
-  textRight: { textAlign: 'right' },
+/* ── Styles ────────────────────────────────────────────────── */
+const s = StyleSheet.create({
+  scroll: { padding: 16, gap: 14 },
+  rowRev: { flexDirection: 'row-reverse' },
+  tR: { textAlign: 'right' },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 2,
-  },
-  headerText: { flex: 1 },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: C.text,
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: C.textMuted,
-    marginTop: 3,
-  },
-  headerIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  /* Header */
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 },
+  h1: { fontSize: 22, fontWeight: '800', color: P.text, letterSpacing: -0.4 },
+  sub: { fontSize: 13, color: P.muted, marginTop: 2 },
+  headerBadge: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
 
+  /* Notice */
+  notice: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: P.amberDim, paddingHorizontal: 14, paddingVertical: 9,
+    borderRadius: 10, borderWidth: 1, borderColor: 'rgba(245,158,11,0.12)',
+  },
+  noticeText: { flex: 1, fontSize: 12, fontWeight: '600', color: P.amber },
+
+  /* Cards */
   card: {
-    backgroundColor: C.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: C.cardBorder,
-    padding: 16,
-    gap: 14,
+    backgroundColor: P.card, borderRadius: 18, borderWidth: 1,
+    borderColor: P.cardBorder, padding: 16, gap: 14,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  cardHeaderText: { flex: 1, gap: 2 },
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: C.text,
-  },
-  cardSubtitle: {
-    fontSize: 13,
-    color: C.textMuted,
-  },
-  iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 2,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  badgeText: {
-    fontSize: 12,
-    color: C.textMuted,
-    fontWeight: '600',
-  },
+  cardRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: P.text },
+  cardSub: { fontSize: 12, color: P.muted },
+  iconCircle: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
-  /* Connect Button */
-  connectBtn: {
-    height: 52,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  connectBtnText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
+  /* Status */
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusLabel: { fontSize: 12, color: P.muted, fontWeight: '600' },
 
-  /* Vitals Grid */
-  vitalsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  /* Error */
+  errBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: P.dangerDim, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
   },
-  vitalBox: {
-    flex: 1,
-    minWidth: 70,
+  errText: { flex: 1, fontSize: 12, fontWeight: '600', color: P.danger },
+
+  /* Vitals 2×2 grid */
+  gridContainer: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
     borderRadius: 16,
-    padding: 14,
-    alignItems: 'center',
-    gap: 4,
-  },
-  vitalValue: {
-    fontSize: 20,
-    fontWeight: '900',
-    marginTop: 2,
-  },
-  vitalUnit: {
-    fontSize: 11,
-    color: C.textMuted,
-    fontWeight: '600',
-  },
-  vitalLabel: {
-    fontSize: 11,
-    color: C.textMuted,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-
-  /* Live Indicator */
-  lastUpdate: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 4,
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  lastUpdateText: {
-    fontSize: 12,
-    color: C.textMuted,
-    fontWeight: '600',
-  },
-
-  /* Action Buttons */
-  actionRow: {
-    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: P.cardBorder,
+    padding: 10,
     gap: 10,
   },
-  saveBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+  gridRow: { flexDirection: 'row', gap: 10 },
+  vBox: { flex: 1, borderRadius: 14, padding: 14, gap: 6, borderWidth: 1 },
+  vBoxHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  vLabel: { fontSize: 11, fontWeight: '600' },
+  vVal: { fontSize: 26, fontWeight: '900', letterSpacing: -0.8 },
+  vUnit: { fontSize: 11, color: P.muted, fontWeight: '500', marginTop: -2 },
+
+  /* Live indicator */
+  liveRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 2 },
+  liveDot: { width: 7, height: 7, borderRadius: 4 },
+  liveText: { fontSize: 11, color: P.muted, fontWeight: '600' },
+
+  /* Action buttons */
+  actionRow: { flexDirection: 'row', gap: 10 },
+  btnPrimary: {
+    flex: 1, height: 46, borderRadius: 12, flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center', gap: 7,
   },
-  saveBtnText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
+  btnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  btnOutline: {
+    height: 46, borderRadius: 12, flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingHorizontal: 18, borderWidth: 1.5, backgroundColor: 'transparent',
   },
-  disconnectBtn: {
-    height: 48,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    borderWidth: 1.5,
-    backgroundColor: 'transparent',
+  btnOutlineText: { fontSize: 13, fontWeight: '700' },
+
+  /* Connect */
+  connectBtn: {
+    height: 50, borderRadius: 14, flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center', gap: 8,
   },
-  disconnectBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  connectBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+
+  /* Stats row */
+  statsRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: 14, borderWidth: 1, borderColor: P.cardBorder, padding: 12 },
+  statBox: { flex: 1, alignItems: 'center', gap: 2 },
+  statLabel: { fontSize: 10, fontWeight: '700', color: P.dim, textTransform: 'uppercase', letterSpacing: 0.5 },
+  statVal: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  statUnit: { fontSize: 10, color: P.muted, fontWeight: '600' },
+  statDivider: { width: 1, height: 32, borderRadius: 1 },
 
   /* Chart */
-  chart: {
-    marginVertical: 6,
-    borderRadius: 16,
-  },
-  chartLoading: {
-    height: 220,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyState: {
-    height: 200,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-  },
-  iconCircleLarge: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: C.text,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: C.textMuted,
-    textAlign: 'center',
-    paddingHorizontal: 20,
-  },
+  chartEmpty: { justifyContent: 'center', alignItems: 'center', gap: 8 },
+  emptyText: { fontSize: 14, fontWeight: '700', color: P.text },
+  emptySub: { fontSize: 12, color: P.muted, textAlign: 'center', paddingHorizontal: 16 },
+
+  /* Legend */
+  legendRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, paddingTop: 4 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 6, height: 6, borderRadius: 3 },
+  legendText: { fontSize: 11, color: P.muted, fontWeight: '600' },
 
   /* Recent */
-  sectionTitle: {
-    marginBottom: 10,
-    fontSize: 16,
-    fontWeight: '800',
-    color: C.text,
+  sectionTitle: { fontSize: 15, fontWeight: '800', color: P.text },
+  recentCard: {
+    backgroundColor: P.card, borderRadius: 14, borderWidth: 1,
+    borderColor: P.cardBorder, padding: 13,
   },
-  recentList: { gap: 8 },
-  recentRow: {
-    backgroundColor: C.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: C.cardBorder,
-    padding: 14,
-  },
-  recentRowInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  recentIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recentInfo: { flex: 1, gap: 3 },
-  recentMain: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: C.text,
-  },
-  recentDate: {
-    fontSize: 12,
-    color: C.textMuted,
-  },
+  recentInner: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  recentIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  recentMain: { fontSize: 13, fontWeight: '700', color: P.text },
+  recentDate: { fontSize: 11, color: P.muted },
 });
