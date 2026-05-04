@@ -6,22 +6,23 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "rafiq",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0A0F1C"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.rafiq.app"
+      "bundleIdentifier": "com.rafiq.app",
+      "requireFullScreen": true
     },
     "android": {
       "package": "com.rafiq.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0A0F1C"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -33,7 +34,20 @@
       "expo-sqlite",
       "expo-font",
       "expo-asset",
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "PORTRAIT_UP"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#00C2FF"
+        }
+      ]
     ],
     "extra": {
       "eas": {

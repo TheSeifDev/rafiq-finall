@@ -1,5 +1,16 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Animated, Modal, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Animated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '../ui/AppText';
 import { useTheme } from '../../theme/useTheme';
@@ -8,8 +19,88 @@ import { MedicationScheduleEditor, type ScheduleDraft } from './MedicationSchedu
 import { MedicationStockEditor, type StockDraft } from './MedicationStockEditor';
 import type { Medication } from '../../services/medication.service';
 import { validateMedicationDraft, type MedicationFormDraft, type MedicationFormErrors } from '../../lib/medications/medicationValidation';
+import type { ThemeColors } from '../../theme';
 
 export type MedicationFormResult = ReturnType<typeof validateMedicationDraft>['normalized'];
+
+// ─── Module-level sub-components (stable references, no re-mount) ──
+
+interface FieldProps {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  placeholder: string;
+  error?: string;
+  multiline?: boolean;
+  isRTL: boolean;
+  colors: ThemeColors;
+  fieldBg: string;
+  fieldBorder: string;
+  placeholderColor: string;
+}
+
+function Field(props: FieldProps): React.JSX.Element {
+  const {
+    label,
+    value,
+    onChangeText,
+    placeholder,
+    error,
+    multiline,
+    isRTL,
+    colors,
+    fieldBg,
+    fieldBorder,
+    placeholderColor,
+  } = props;
+  const bad = !!error;
+  return (
+    <View style={{ flex: 1, gap: 8 }}>
+      <View style={[styles.fieldLabelRow, isRTL && styles.rowRTL]}>
+        <AppText style={{ fontSize: 12, fontWeight: '900', color: colors.textSecondary, opacity: 0.9 }}>{label}</AppText>
+        {!!error && <InlineError text={error} />}
+      </View>
+      <View style={[styles.field, { backgroundColor: fieldBg, borderColor: bad ? `${colors.danger}55` : fieldBorder }]}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={placeholderColor}
+          style={[
+            styles.input,
+            { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' },
+            multiline && { height: 88, textAlignVertical: 'top', paddingTop: 12 },
+          ]}
+          multiline={multiline}
+        />
+      </View>
+    </View>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
+  const { colors, isRTL } = useTheme();
+  return (
+    <View style={styles.section}>
+      <AppText style={[styles.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{title}</AppText>
+      <View style={{ gap: spacing.sm }}>{children}</View>
+    </View>
+  );
+}
+
+function InlineError({ text }: { text: string }): React.JSX.Element {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <Ionicons name="alert-circle" size={14} color={colors.danger} />
+      <AppText style={{ fontSize: 11, fontWeight: '900', color: colors.danger }} numberOfLines={1}>
+        {text}
+      </AppText>
+    </View>
+  );
+}
+
+// ─── Main component ──────────────────────────────────────────
 
 export function MedicationFormSheet({
   visible,
@@ -59,20 +150,23 @@ export function MedicationFormSheet({
   const { colors, darkMode, isRTL } = useTheme();
   const overlay = useRef(new Animated.Value(0)).current;
   const slide = useRef(new Animated.Value(0)).current;
+  const prevVisible = useRef(false);
 
   const [draft, setDraft] = React.useState<MedicationFormDraft>(() => toDraft(initialMedication));
   const [errors, setErrors] = React.useState<MedicationFormErrors>({});
 
   useEffect(() => {
-    if (!visible) return;
-    setDraft(toDraft(initialMedication));
-    setErrors({});
-    overlay.setValue(0);
-    slide.setValue(0);
-    Animated.parallel([
-      Animated.timing(overlay, { toValue: 1, duration: 160, useNativeDriver: true }),
-      Animated.timing(slide, { toValue: 1, duration: 220, useNativeDriver: true }),
-    ]).start();
+    if (visible && !prevVisible.current) {
+      setDraft(toDraft(initialMedication));
+      setErrors({});
+      overlay.setValue(0);
+      slide.setValue(0);
+      Animated.parallel([
+        Animated.timing(overlay, { toValue: 1, duration: 160, useNativeDriver: true }),
+        Animated.timing(slide, { toValue: 1, duration: 220, useNativeDriver: true }),
+      ]).start();
+    }
+    prevVisible.current = visible;
   }, [visible, initialMedication, overlay, slide]);
 
   const surface = darkMode ? 'rgba(30,41,59,0.98)' : 'rgba(255,255,255,0.98)';
@@ -109,176 +203,181 @@ export function MedicationFormSheet({
       <Animated.View style={[styles.overlay, { opacity: overlay }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
 
-        <Animated.View style={[styles.sheet, { transform: [{ translateY }], backgroundColor: surface, borderColor: border }]}>
-          <View style={[styles.header, isRTL && styles.rowRTL]}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <AppText style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
-                {initialMedication ? labels.titleEdit : labels.titleAdd}
-              </AppText>
-              <AppText style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-                {isRTL ? 'تحقق من الجدول والمخزون بعناية' : 'Review schedule & stock carefully'}
-              </AppText>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ width: '100%' }}
+        >
+          <Animated.View style={[styles.sheet, { transform: [{ translateY }], backgroundColor: surface, borderColor: border }]}>
+            <View style={[styles.header, isRTL && styles.rowRTL]}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <AppText style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {initialMedication ? labels.titleEdit : labels.titleAdd}
+                </AppText>
+                <AppText style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {isRTL ? 'تحقق من الجدول والمخزون بعناية' : 'Review schedule & stock carefully'}
+                </AppText>
+              </View>
+              <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="close" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-            <Section title={labels.sections.basics}>
-              <Field
-                label={labels.fields.name}
-                value={draft.name}
-                onChangeText={(v) => setDraft((d) => ({ ...d, name: v }))}
-                placeholder={labels.placeholders.name}
-                error={errors.name}
-              />
-              <View style={[styles.row, isRTL && styles.rowRTL]}>
-                <Field
-                  label={labels.fields.strength}
-                  value={draft.strength}
-                  onChangeText={(v) => setDraft((d) => ({ ...d, strength: v }))}
-                  placeholder={labels.placeholders.strength}
-                  error={errors.strength}
-                />
-                <Field
-                  label={labels.fields.form}
-                  value={draft.form}
-                  onChangeText={(v) => setDraft((d) => ({ ...d, form: v }))}
-                  placeholder={labels.placeholders.form}
-                  error={errors.form}
-                />
-              </View>
-              <View style={[styles.row, isRTL && styles.rowRTL]}>
-                <Field
-                  label={labels.fields.category}
-                  value={draft.category}
-                  onChangeText={(v) => setDraft((d) => ({ ...d, category: v }))}
-                  placeholder={labels.placeholders.category}
-                  error={errors.category}
-                />
-                <Field
-                  label={labels.fields.reason}
-                  value={draft.reason}
-                  onChangeText={(v) => setDraft((d) => ({ ...d, reason: v }))}
-                  placeholder={labels.placeholders.reason}
-                  error={errors.reason}
-                />
-              </View>
-            </Section>
-
-            <Section title={labels.sections.schedule}>
-              <MedicationScheduleEditor
-                value={scheduleDraft}
-                onChange={(next) => setDraft((d) => ({ ...d, scheduleType: next.scheduleType, mealRule: next.mealRule, times: next.times }))}
-                labels={labels.schedule}
-                error={errors.times}
-              />
-            </Section>
-
-            <Section title={labels.sections.stock}>
-              <MedicationStockEditor
-                value={stockDraft}
-                onChange={(next) =>
-                  setDraft((d) => ({
-                    ...d,
-                    quantityType: next.quantityType,
-                    totalQuantity: next.totalQuantity,
-                    remainingQuantity: next.remainingQuantity,
-                    refillThreshold: next.refillThreshold,
-                  }))
-                }
-                labels={labels.stock}
-                schedule={{ scheduleType: draft.scheduleType, times: draft.times, frequencyText: draft.scheduleType }}
-              />
-              {!!errors.remainingQuantity && <InlineError text={errors.remainingQuantity} />}
-              {!!errors.totalQuantity && <InlineError text={errors.totalQuantity} />}
-              {!!errors.refillThreshold && <InlineError text={errors.refillThreshold} />}
-            </Section>
-
-            <Section title={isRTL ? 'ملاحظات' : 'Notes'}>
-              <Field
-                label={labels.fields.notes}
-                value={draft.notes}
-                onChangeText={(v) => setDraft((d) => ({ ...d, notes: v }))}
-                placeholder={labels.placeholders.notes}
-                multiline
-              />
-              <Field
-                label={labels.fields.doctorName}
-                value={draft.doctorName}
-                onChangeText={(v) => setDraft((d) => ({ ...d, doctorName: v }))}
-                placeholder={labels.placeholders.doctorName}
-              />
-            </Section>
-
-            <View style={{ height: 8 }} />
-          </ScrollView>
-
-          <View style={[styles.footer, isRTL && styles.rowRTL]}>
-            <TouchableOpacity
-              onPress={onClose}
-              style={[styles.footerBtn, { borderColor: border }]}
-              activeOpacity={0.85}
-              disabled={saving}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scroll}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="none"
             >
-              <AppText style={[styles.footerBtnText, { color: colors.textPrimary }]}>{labels.cancel}</AppText>
-            </TouchableOpacity>
+              <Section title={labels.sections.basics}>
+                <Field
+                  label={labels.fields.name}
+                  value={draft.name}
+                  onChangeText={(v) => setDraft((d) => ({ ...d, name: v }))}
+                  placeholder={labels.placeholders.name}
+                  error={errors.name}
+                  isRTL={isRTL}
+                  colors={colors}
+                  fieldBg={fieldBg}
+                  fieldBorder={fieldBorder}
+                  placeholderColor={placeholderColor}
+                />
+                <View style={[styles.row, isRTL && styles.rowRTL]}>
+                  <Field
+                    label={labels.fields.strength}
+                    value={draft.strength}
+                    onChangeText={(v) => setDraft((d) => ({ ...d, strength: v }))}
+                    placeholder={labels.placeholders.strength}
+                    error={errors.strength}
+                    isRTL={isRTL}
+                    colors={colors}
+                    fieldBg={fieldBg}
+                    fieldBorder={fieldBorder}
+                    placeholderColor={placeholderColor}
+                  />
+                  <Field
+                    label={labels.fields.form}
+                    value={draft.form}
+                    onChangeText={(v) => setDraft((d) => ({ ...d, form: v }))}
+                    placeholder={labels.placeholders.form}
+                    error={errors.form}
+                    isRTL={isRTL}
+                    colors={colors}
+                    fieldBg={fieldBg}
+                    fieldBorder={fieldBorder}
+                    placeholderColor={placeholderColor}
+                  />
+                </View>
+                <View style={[styles.row, isRTL && styles.rowRTL]}>
+                  <Field
+                    label={labels.fields.category}
+                    value={draft.category}
+                    onChangeText={(v) => setDraft((d) => ({ ...d, category: v }))}
+                    placeholder={labels.placeholders.category}
+                    error={errors.category}
+                    isRTL={isRTL}
+                    colors={colors}
+                    fieldBg={fieldBg}
+                    fieldBorder={fieldBorder}
+                    placeholderColor={placeholderColor}
+                  />
+                  <Field
+                    label={labels.fields.reason}
+                    value={draft.reason}
+                    onChangeText={(v) => setDraft((d) => ({ ...d, reason: v }))}
+                    placeholder={labels.placeholders.reason}
+                    error={errors.reason}
+                    isRTL={isRTL}
+                    colors={colors}
+                    fieldBg={fieldBg}
+                    fieldBorder={fieldBorder}
+                    placeholderColor={placeholderColor}
+                  />
+                </View>
+              </Section>
 
-            <TouchableOpacity
-              onPress={submit}
-              style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
-              activeOpacity={0.85}
-              disabled={saving}
-            >
-              {saving ? <Ionicons name="sync" size={18} color="#fff" /> : <Ionicons name="checkmark" size={18} color="#fff" />}
-              <AppText style={styles.primaryBtnText}>{labels.save}</AppText>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
+              <Section title={labels.sections.schedule}>
+                <MedicationScheduleEditor
+                  value={scheduleDraft}
+                  onChange={(next) => setDraft((d) => ({ ...d, scheduleType: next.scheduleType, mealRule: next.mealRule, times: next.times }))}
+                  labels={labels.schedule}
+                  error={errors.times}
+                />
+              </Section>
+
+              <Section title={labels.sections.stock}>
+                <MedicationStockEditor
+                  value={stockDraft}
+                  onChange={(next) =>
+                    setDraft((d) => ({
+                      ...d,
+                      quantityType: next.quantityType,
+                      totalQuantity: next.totalQuantity,
+                      remainingQuantity: next.remainingQuantity,
+                      refillThreshold: next.refillThreshold,
+                    }))
+                  }
+                  labels={labels.stock}
+                  schedule={{ scheduleType: draft.scheduleType, times: draft.times, frequencyText: draft.scheduleType }}
+                />
+                {!!errors.remainingQuantity && <InlineError text={errors.remainingQuantity} />}
+                {!!errors.totalQuantity && <InlineError text={errors.totalQuantity} />}
+                {!!errors.refillThreshold && <InlineError text={errors.refillThreshold} />}
+              </Section>
+
+              <Section title={isRTL ? 'ملاحظات' : 'Notes'}>
+                <Field
+                  label={labels.fields.notes}
+                  value={draft.notes}
+                  onChangeText={(v) => setDraft((d) => ({ ...d, notes: v }))}
+                  placeholder={labels.placeholders.notes}
+                  multiline
+                  isRTL={isRTL}
+                  colors={colors}
+                  fieldBg={fieldBg}
+                  fieldBorder={fieldBorder}
+                  placeholderColor={placeholderColor}
+                />
+                <Field
+                  label={labels.fields.doctorName}
+                  value={draft.doctorName}
+                  onChangeText={(v) => setDraft((d) => ({ ...d, doctorName: v }))}
+                  placeholder={labels.placeholders.doctorName}
+                  isRTL={isRTL}
+                  colors={colors}
+                  fieldBg={fieldBg}
+                  fieldBorder={fieldBorder}
+                  placeholderColor={placeholderColor}
+                />
+              </Section>
+
+              <View style={{ height: 8 }} />
+            </ScrollView>
+
+            <View style={[styles.footer, isRTL && styles.rowRTL]}>
+              <TouchableOpacity
+                onPress={onClose}
+                style={[styles.footerBtn, { borderColor: border }]}
+                activeOpacity={0.85}
+                disabled={saving}
+              >
+                <AppText style={[styles.footerBtnText, { color: colors.textPrimary }]}>{labels.cancel}</AppText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={submit}
+                style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
+                activeOpacity={0.85}
+                disabled={saving}
+              >
+                {saving ? <Ionicons name="sync" size={18} color="#fff" /> : <Ionicons name="checkmark" size={18} color="#fff" />}
+                <AppText style={styles.primaryBtnText}>{labels.save}</AppText>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </KeyboardAvoidingView>
       </Animated.View>
     </Modal>
   );
-
-  function Field({
-    label,
-    value,
-    onChangeText,
-    placeholder,
-    error,
-    multiline,
-  }: {
-    label: string;
-    value: string;
-    onChangeText: (v: string) => void;
-    placeholder: string;
-    error?: string;
-    multiline?: boolean;
-  }): React.JSX.Element {
-    const bad = !!error;
-    return (
-      <View style={{ flex: 1, gap: 8 }}>
-        <View style={[styles.fieldLabelRow, isRTL && styles.rowRTL]}>
-          <AppText style={{ fontSize: 12, fontWeight: '900', color: colors.textSecondary, opacity: 0.9 }}>{label}</AppText>
-          {!!error && <InlineError text={error} />}
-        </View>
-        <View style={[styles.field, { backgroundColor: fieldBg, borderColor: bad ? `${colors.danger}55` : fieldBorder }]}>
-          <TextInput
-            value={value}
-            onChangeText={onChangeText}
-            placeholder={placeholder}
-            placeholderTextColor={placeholderColor}
-            style={[
-              styles.input,
-              { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' },
-              multiline && { height: 88, textAlignVertical: 'top', paddingTop: 12 },
-            ]}
-            multiline={multiline}
-          />
-        </View>
-      </View>
-    );
-  }
 }
 
 function toDraft(med: Medication | null): MedicationFormDraft {
@@ -305,28 +404,6 @@ function toDraft(med: Medication | null): MedicationFormDraft {
     notes: med?.notes ?? '',
     doctorName: med?.doctor_name ?? '',
   };
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
-  const { colors, isRTL } = useTheme();
-  return (
-    <View style={styles.section}>
-      <AppText style={[styles.sectionTitle, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}>{title}</AppText>
-      <View style={{ gap: spacing.sm }}>{children}</View>
-    </View>
-  );
-}
-
-function InlineError({ text }: { text: string }): React.JSX.Element {
-  const { colors } = useTheme();
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <Ionicons name="alert-circle" size={14} color={colors.danger} />
-      <AppText style={{ fontSize: 11, fontWeight: '900', color: colors.danger }} numberOfLines={1}>
-        {text}
-      </AppText>
-    </View>
-  );
 }
 
 const styles = StyleSheet.create({
@@ -433,4 +510,3 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 });
-

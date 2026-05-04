@@ -174,23 +174,8 @@ export async function safeCancelNotification(id: string): Promise<void> {
   }
 }
 
-/**
- * Get Expo push token. In Expo Go: returns `null` — no import.
- */
-export async function safeGetPushToken(): Promise<string | null> {
-  if (isExpoGo()) return null;
-
-  const Notifications = await loadModule();
-  if (!Notifications) return null;
-
-  try {
-    const token = await Notifications.getExpoPushTokenAsync();
-    return token.data;
-  } catch (err) {
-    console.warn('[Notifications] Failed to get push token:', err);
-    return null;
-  }
-}
+// NOTE: safeGetPushToken removed — Expo Go SDK 54 does not support push tokens.
+// This app uses LOCAL notifications only via scheduleNotificationAsync().
 
 /**
  * Add a listener for received notifications.

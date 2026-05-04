@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { LayoutAnimation, Platform, StyleSheet, TouchableOpacity, UIManager, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '../ui/AppText';
 import { useTheme } from '../../theme/useTheme';
@@ -7,10 +7,6 @@ import { radius, spacing } from '../../theme';
 import { classifyStock } from '../../lib/medications/medicationMath';
 import { estimateDosesPerDay, parseMedicationTimes } from '../../lib/medications/medicationSchedule';
 import type { Medication } from '../../services/medication.service';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 function pickAccent(name: string): string {
   const n = name.toLowerCase();
@@ -67,7 +63,6 @@ export function MedicationExpandableCard({
   });
 
   function toggleExpanded() {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpanded((v) => !v);
   }
 
@@ -121,7 +116,7 @@ export function MedicationExpandableCard({
           <Divider />
 
           <View style={[styles.sectionRow, isRTL && styles.rowRTL]}>
-            <Section label={isRTL ? 'الجدول' : 'Schedule'} />
+            <SectionLabel label={isRTL ? 'الجدول' : 'Schedule'} />
             <View style={[styles.chipsWrap, isRTL && styles.rowRTL]}>
               {times.slice(0, 4).map((t, idx) => (
                 <MetaChip
@@ -184,7 +179,7 @@ function Divider(): React.JSX.Element {
   return <View style={{ height: 1, backgroundColor: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }} />;
 }
 
-function Section({ label }: { label: string }): React.JSX.Element {
+function SectionLabel({ label }: { label: string }): React.JSX.Element {
   const { colors } = useTheme();
   return <AppText style={[styles.sectionLabel, { color: colors.textSecondary }]}>{label}</AppText>;
 }
@@ -370,4 +365,3 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 });
-

@@ -8,6 +8,7 @@ import { useAppStore } from './src/store/app.store';
 import { linking } from './src/navigation/linking';
 import { useAuthStore } from './src/store/auth.store';
 import { initNotificationsOnce } from './src/lib/notifications/medicationReminders';
+import { navigationRef } from './src/navigation/MainNavigator';
 
 function Boot(): React.JSX.Element {
   const initialize = useAuthStore((state) => state.initialize);
@@ -37,7 +38,7 @@ function Boot(): React.JSX.Element {
 export default function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
-      <NavigationContainer linking={linking}>
+      <NavigationContainer ref={navigationRef} linking={linking}>
         <Boot />
       </NavigationContainer>
     </SafeAreaProvider>

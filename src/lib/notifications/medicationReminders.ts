@@ -1,17 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { Medication, MedicationLog } from '../../services/medication.service';
 import { parseMedicationTimes } from '../medications/medicationSchedule';
 import { classifyStock } from '../medications/medicationMath';
 import { notificationService } from '../../services/notification.service';
 import {
-  safeInitNotifications,
-  safeRequestPermissions,
-  safeScheduleNotification,
-  safeCancelNotification,
-  PRIORITY,
-  TRIGGER,
-} from './notificationSafety';
+  requestNotificationPermission,
+  ensureAndroidChannel,
+  scheduleMedicationReminder,
+  cancelAllRemindersForMedication,
+} from './notificationService';
 
 type ScheduledMap = Record<string, Record<string, string>>; // medId -> timeKey -> notifId
 
@@ -40,15 +39,27 @@ function parseHHMM(time: string): { hour: number; minute: number } | null {
   return { hour, minute };
 }
 
+/**
+ * Initialize notification handler + Android channels.
+ * Called once from App.tsx on startup.
+ */
 export async function initNotificationsOnce(): Promise<void> {
-  await safeInitNotifications();
+  // Handler is set at module level in notificationService.ts,
+  // but we also ensure the Android channel exists.
+  await ensureAndroidChannel();
 }
 
+/**
+ * Ensure permission is granted.
+ */
 export async function ensureNotificationPermission(): Promise<boolean> {
-  const result = await safeRequestPermissions();
-  return result.granted;
+  return requestNotificationPermission();
 }
 
+/**
+ * Sync medication reminders — call after load() or save.
+ * Uses DIRECT expo-notifications (works in Expo Go).
+ */
 export async function syncMedicationReminders(opts: {
   patientId: string;
   userId: string;
@@ -79,7 +90,7 @@ export async function syncMedicationReminders(opts: {
 
     for (const t of times) {
       const hhmm = parseHHMM(t.time);
-      if (!hhmm) continue; // don't schedule AM/PM strings as repeating triggers
+      if (!hhmm) continue;
       const key = timeKeyFor(med.id, t.time);
 
       const existingId = existing?.[med.id]?.[key];
@@ -90,25 +101,19 @@ export async function syncMedicationReminders(opts: {
         continue;
       }
 
-      const title = language === 'ar' ? 'تذكير دواء' : 'Medication reminder';
-      const body =
-        language === 'ar'
-          ? `حان وقت جرعة: ${med.name}${med.strength ? ` (${med.strength})` : ''}`
-          : `Time for dose: ${med.name}${med.strength ? ` (${med.strength})` : ''}`;
-
-      const id = await safeScheduleNotification({
-        content: {
-          title,
-          body,
-          sound: true,
-          priority: PRIORITY.MAX,
-          ...(Platform.OS === 'android' ? { channelId: 'medications' } : null),
-          data: { kind: 'medication_reminder', medicationId: med.id, patientId },
-        },
-        trigger: { type: TRIGGER.CALENDAR, hour: hhmm.hour, minute: hhmm.minute, repeats: true },
-      });
-
-      if (id) nextMap[med.id][key] = id;
+      // ✅ Schedule via notificationService (direct expo-notifications)
+      try {
+        const id = await scheduleMedicationReminder({
+          medicationId: med.id,
+          medicationName: med.name,
+          hour: hhmm.hour,
+          minute: hhmm.minute,
+          language,
+        });
+        nextMap[med.id][key] = id;
+      } catch (err) {
+        console.warn('[MedReminders] Schedule failed:', med.name, t.time, err);
+      }
     }
   }
 
@@ -120,13 +125,49 @@ export async function syncMedicationReminders(opts: {
   await evaluateAndSendAlerts({ patientId, userId, language, medications });
 }
 
+/**
+ * Sync notifications for a single medication after save/toggle.
+ * Call this directly from handleSubmitForm or handleToggleActive.
+ */
+export async function syncSingleMedicationNotifications(medication: Medication, language: 'ar' | 'en' = 'ar'): Promise<void> {
+  const granted = await requestNotificationPermission();
+  if (!granted) return;
+
+  // Cancel existing reminders for this medication
+  await cancelAllRemindersForMedication(medication.id);
+
+  // If not active, stop here
+  const isActive = (medication.active ?? medication.is_active) !== false;
+  if (!isActive) return;
+
+  // Schedule a reminder for each valid time
+  const times = parseMedicationTimes(medication.times, medication.time_of_day);
+  for (const t of times) {
+    if (t.kind !== 'time') continue;
+    const hhmm = parseHHMM(t.time);
+    if (!hhmm) continue;
+
+    try {
+      await scheduleMedicationReminder({
+        medicationId: medication.id,
+        medicationName: medication.name,
+        hour: hhmm.hour,
+        minute: hhmm.minute,
+        language,
+      });
+    } catch (err) {
+      console.warn('[MedReminders] Schedule single failed:', medication.name, t.time, err);
+    }
+  }
+}
+
 async function cancelAllForPatient(patientId: string): Promise<void> {
   const existing = await readMap(patientId);
   if (!existing) return;
   for (const medId of Object.keys(existing)) {
     for (const notifId of Object.values(existing[medId] ?? {})) {
       try {
-        await safeCancelNotification(notifId);
+        await Notifications.cancelScheduledNotificationAsync(notifId);
       } catch {
         // ignore
       }
@@ -142,7 +183,7 @@ async function cancelOrphans(existing: ScheduledMap | null, nextMap: ScheduledMa
       const stillNeeded = Boolean(nextMap?.[medId]?.[key]);
       if (!stillNeeded) {
         try {
-          await safeCancelNotification(notifId);
+          await Notifications.cancelScheduledNotificationAsync(notifId);
         } catch {
           // ignore
         }
@@ -214,11 +255,9 @@ async function evaluateAndSendAlerts(opts: {
     }
   }
 
-  // Missed dose alert (lightweight heuristic): after 8pm, if a med has times and no taken log today -> alert once/day.
+  // Missed dose alert (lightweight heuristic): after 8pm
   const hourNow = new Date().getHours();
   if (hourNow >= 20) {
-    // We don't have patient-scoped logs here without another query; rely on heuristic: only alert if remaining exists + has schedule.
-    // Full missed-dose logic with logs is invoked from MedicationsScreen (more context).
     for (const med of medications) {
       const active = (med.active ?? med.is_active) !== false;
       if (!active) continue;
@@ -228,7 +267,7 @@ async function evaluateAndSendAlerts(opts: {
       const key = `missed_dose_check:${med.id}:${tk}`;
       if (state[key]) continue;
 
-      const title = language === 'ar' ? 'تحقق من جرعات اليوم' : 'Check today’s doses';
+const title = language === 'ar' ? 'تحقق من جرعات اليوم' : `Check today's doses`;
       const body =
         language === 'ar'
           ? `هل تم أخذ جرعات ${med.name} اليوم؟ افتح صفحة الأدوية للتأكيد.`
@@ -312,4 +351,3 @@ export function computeMissedDosesForToday(opts: {
 
   return { missedCount, perMedication };
 }
-

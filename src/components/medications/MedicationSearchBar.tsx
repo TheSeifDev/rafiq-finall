@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/useTheme';
@@ -22,19 +22,23 @@ export function MedicationSearchBar({
   const border = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
   const placeholderColor = darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.30)';
 
+  const handleChange = useCallback((text: string) => onChange(text), [onChange]);
+
   return (
     <View style={[styles.row, isRTL && styles.rowRTL]}>
       <View style={[styles.search, { backgroundColor: bg, borderColor: border }]}>
         <Ionicons name="search" size={18} color={colors.textSecondary} />
         <TextInput
           value={value}
-          onChangeText={onChange}
+          onChangeText={handleChange}
           placeholder={placeholder}
           placeholderTextColor={placeholderColor}
           style={[styles.input, { color: colors.textPrimary, textAlign: isRTL ? 'right' : 'left' }]}
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="search"
+          textContentType="none"
+          autoComplete="off"
         />
         {!!value && (
           <TouchableOpacity onPress={() => onChange('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -95,4 +99,3 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
-

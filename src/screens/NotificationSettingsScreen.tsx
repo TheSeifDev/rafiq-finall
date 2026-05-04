@@ -17,7 +17,7 @@ import { AppText } from '../components/ui/AppText';
 import { useTheme } from '../theme/useTheme';
 import { useAppStore, type NotificationPrefs } from '../store/app.store';
 import { spacing, radius } from '../theme';
-import { isExpoGo, safeScheduleNotification, TRIGGER } from '../lib/notifications/notificationSafety';
+import { sendTestNotification as sendTestNotif } from '../lib/notifications/notificationService';
 
 // ─── Translations (inline — keeps the file self-contained) ───
 const T = {
@@ -254,7 +254,6 @@ export function NotificationSettingsScreen(): React.JSX.Element {
   const [testLoading, setTestLoading] = useState(false);
 
   const isAr = language === 'ar';
-  const inExpoGo = isExpoGo();
 
   const togglePref = useCallback(
     (key: keyof NotificationPrefs, value: boolean) => {
@@ -276,28 +275,17 @@ export function NotificationSettingsScreen(): React.JSX.Element {
     [setPrefs],
   );
 
-  const sendTestNotification = useCallback(async () => {
-    if (inExpoGo) {
-      Alert.alert('', t.expoGoWarning);
-      return;
-    }
+  const handleSendTestNotification = useCallback(async () => {
     setTestLoading(true);
     try {
-      const id = await safeScheduleNotification({
-        content: {
-          title: isAr ? 'إشعار تجريبي' : 'Test Notification',
-          body: isAr ? 'هذا إشعار تجريبي من رفيق' : 'This is a test notification from Rafiq',
-          sound: prefs.sound,
-        },
-        trigger: { type: TRIGGER.TIME_INTERVAL, seconds: 2 },
-      });
-      Alert.alert('', id ? t.testSent : t.testFailed);
+      await sendTestNotif(isAr ? 'ar' : 'en');
+      Alert.alert('', t.testSent);
     } catch {
       Alert.alert('', t.testFailed);
     } finally {
       setTestLoading(false);
     }
-  }, [inExpoGo, isAr, prefs.sound, t]);
+  }, [isAr, t]);
 
   const allEnabled = prefs.medicationReminders && prefs.lowStockAlerts && prefs.emergencyAlerts && prefs.chatAlerts && prefs.vitalsAlerts;
 
@@ -309,13 +297,7 @@ export function NotificationSettingsScreen(): React.JSX.Element {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Expo Go Banner ── */}
-        {inExpoGo && (
-          <View style={[styles.banner, { backgroundColor: colors.warning + '18', borderColor: colors.warning + '30' }]}>
-            <Ionicons name="warning-outline" size={18} color={colors.warning} />
-            <AppText style={[styles.bannerText, { color: colors.warning }]}>{t.expoGoWarning}</AppText>
-          </View>
-        )}
+        {/* ── Expo Go Banner (local notifications work, banner removed) ── */}
 
         {/* ── Alert Types ── */}
         <SectionCard
@@ -442,7 +424,7 @@ export function NotificationSettingsScreen(): React.JSX.Element {
         {/* ── Testing ── */}
         <SectionCard title={t.testing} darkMode={darkMode} colors={colors}>
           <TouchableOpacity
-            onPress={sendTestNotification}
+            onPress={handleSendTestNotification}
             disabled={testLoading}
             activeOpacity={0.7}
             style={[styles.testBtn, { backgroundColor: colors.primary + '12' }]}

@@ -27,7 +27,8 @@ import { MedicationFilterSheet, type MedicationFilters } from '../components/med
 import { classifyStock } from '../lib/medications/medicationMath';
 import { estimateDosesPerDay } from '../lib/medications/medicationSchedule';
 import { MedicationFormSheet } from '../components/medications/MedicationFormSheet';
-import { syncMedicationReminders, computeMissedDosesForToday } from '../lib/notifications/medicationReminders';
+import { syncMedicationReminders, syncSingleMedicationNotifications, computeMissedDosesForToday } from '../lib/notifications/medicationReminders';
+import { cancelAllRemindersForMedication } from '../lib/notifications/notificationService';
 
 type Props = ProfileStackScreenProps<'Medications'>;
 
@@ -203,6 +204,15 @@ export function MedicationsScreen({ navigation }: Props): React.JSX.Element {
         setShowForm(false);
         setEditing(null);
         await load();
+
+        // ✅ Schedule notifications immediately after save
+        // load() triggers syncMedicationReminders but we also sync this specific med
+        // to guarantee the new/updated schedule takes effect right away.
+        const freshList = await medicationService.getMedications((await patientService.getProfile(session.user.id))?.id ?? '');
+        const savedMed = freshList.find((m) => m.name === result.name);
+        if (savedMed) {
+          syncSingleMedicationNotifications(savedMed, language).catch(() => undefined);
+        }
       } catch {
         Alert.alert(isAr ? 'تعذر الحفظ' : 'Save failed', isAr ? 'تحقق من البيانات المدخلة.' : 'Please check the entered data.');
       } finally {
@@ -313,6 +323,9 @@ export function MedicationsScreen({ navigation }: Props): React.JSX.Element {
       const next = !((med.active ?? med.is_active) !== false);
       try {
         await medicationService.setActive(med.id, next);
+        // ✅ Immediately sync notifications for this med
+        const updatedMed = { ...med, active: next, is_active: next };
+        syncSingleMedicationNotifications(updatedMed, language).catch(() => undefined);
         await load();
       } catch {
         Alert.alert(isAr ? 'تعذر التحديث' : 'Update failed');
@@ -333,6 +346,8 @@ export function MedicationsScreen({ navigation }: Props): React.JSX.Element {
             style: 'destructive',
             onPress: async () => {
               try {
+                // ✅ Cancel reminders before deleting
+                await cancelAllRemindersForMedication(med.id).catch(() => undefined);
                 await medicationService.deleteMedication(med.id);
                 await load();
               } catch {

@@ -4,18 +4,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
-  LayoutAnimation,
-  Platform,
-  UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from './AppText';
 import { useTheme } from '../../theme/useTheme';
 import { spacing } from '../../theme';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+
 
 interface CollapsibleSectionProps {
   title: string;
@@ -41,7 +36,7 @@ export function CollapsibleSection({
   const rotation = useRef(new Animated.Value(defaultOpen ? 1 : 0)).current;
 
   const toggle = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+
     const toValue = isOpen ? 0 : 1;
     Animated.timing(rotation, {
       toValue,

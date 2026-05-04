@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '../ui/AppText';
@@ -10,6 +10,8 @@ export type ScheduleDraft = {
   scheduleType: string;
   mealRule: string;
   times: string[];
+  customDays?: number[];
+  exactTime?: string;
 };
 
 const SCHEDULE_TYPES: Array<{ key: string; ar: string; en: string; icon: keyof typeof Ionicons.glyphMap }> = [
@@ -30,11 +32,25 @@ const MEAL_RULES: Array<{ key: string; ar: string; en: string }> = [
   { key: 'exact', ar: 'وقت محدد', en: 'Exact time' },
 ];
 
+const DAYS_OF_WEEK: Array<{ index: number; ar: string; en: string }> = [
+  { index: 0, ar: 'الأحد', en: 'Sun' },
+  { index: 1, ar: 'الاثنين', en: 'Mon' },
+  { index: 2, ar: 'الثلاثاء', en: 'Tue' },
+  { index: 3, ar: 'الأربعاء', en: 'Wed' },
+  { index: 4, ar: 'الخميس', en: 'Thu' },
+  { index: 5, ar: 'الجمعة', en: 'Fri' },
+  { index: 6, ar: 'السبت', en: 'Sat' },
+];
+
 function ensureSlots(times: string[], scheduleType: string): string[] {
   const base = times.length ? [...times] : ['08:00'];
-  const need = scheduleType === 'once_daily' ? 1 : scheduleType === 'twice_daily' ? 2 : scheduleType === 'three_times_daily' ? 3 : base.length;
+  const need =
+    scheduleType === 'once_daily' ? 1
+    : scheduleType === 'twice_daily' ? 2
+    : scheduleType === 'three_times_daily' ? 3
+    : base.length;
   while (base.length < need) base.push('');
-  return base.slice(0, Math.max(3, need));
+  return [...base.slice(0, Math.max(3, need))];
 }
 
 export function MedicationScheduleEditor({
@@ -53,6 +69,18 @@ export function MedicationScheduleEditor({
   const border = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
 
   const times = useMemo(() => ensureSlots(value.times, value.scheduleType), [value.times, value.scheduleType]);
+
+  // Local state for custom days (maintained inside editor)
+  const [customDays, setCustomDays] = useState<number[]>(value.customDays ?? []);
+  const [exactTime, setExactTime] = useState(value.exactTime ?? '');
+
+  function toggleDay(dayIndex: number) {
+    const next = customDays.includes(dayIndex)
+      ? customDays.filter((d) => d !== dayIndex)
+      : [...customDays, dayIndex].sort((a, b) => a - b);
+    setCustomDays(next);
+    onChange({ ...value, customDays: next });
+  }
 
   return (
     <View style={styles.wrap}>
@@ -81,6 +109,41 @@ export function MedicationScheduleEditor({
         ))}
       </View>
 
+      {/* Custom schedule: day-of-week picker */}
+      {value.scheduleType === 'custom' && (
+        <View style={{ gap: spacing.sm }}>
+          <AppText style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+            {isRTL ? 'اختر الأيام' : 'Select days'}
+          </AppText>
+          <View style={[styles.chipGrid, isRTL && styles.rowRTL]}>
+            {DAYS_OF_WEEK.map((day) => {
+              const selected = customDays.includes(day.index);
+              return (
+                <TouchableOpacity
+                  key={day.index}
+                  onPress={() => toggleDay(day.index)}
+                  activeOpacity={0.85}
+                  style={[
+                    styles.dayChip,
+                    {
+                      backgroundColor: selected ? 'rgba(0,194,255,0.15)' : bg,
+                      borderColor: selected ? 'rgba(0,194,255,0.4)' : border,
+                    },
+                  ]}
+                >
+                  <AppText
+                    style={[styles.dayChipText, { color: selected ? colors.primary : colors.textPrimary }]}
+                    numberOfLines={1}
+                  >
+                    {isRTL ? day.ar : day.en}
+                  </AppText>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
       <AppText style={[styles.sectionLabel, { color: colors.textSecondary }]}>{labels.mealRule}</AppText>
       <View style={[styles.chipGrid, isRTL && styles.rowRTL]}>
         {MEAL_RULES.map((m) => (
@@ -92,6 +155,35 @@ export function MedicationScheduleEditor({
           />
         ))}
       </View>
+
+      {/* Exact time entry for 'exact' mealRule */}
+      {value.mealRule === 'exact' && (() => {
+        const valid = !!normalizeTime(exactTime);
+        const bad = exactTime.trim().length > 0 && !valid;
+        return (
+          <View style={{ gap: spacing.sm }}>
+            <AppText style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+              {isRTL ? 'الوقت المحدد' : 'Exact time'}
+            </AppText>
+            <View style={[styles.timeCell, { backgroundColor: bg, borderColor: bad ? `${colors.danger}55` : border }]}>
+              <Ionicons name="alarm" size={16} color={bad ? colors.danger : colors.textSecondary} />
+              <TextInput
+                value={exactTime}
+                onChangeText={(v) => {
+                  setExactTime(v);
+                  onChange({ ...value, exactTime: v });
+                }}
+                placeholder="HH:MM"
+                placeholderTextColor={darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.30)'}
+                keyboardType="numbers-and-punctuation"
+                style={[styles.timeInput, { color: colors.textPrimary, textAlign: 'center' }]}
+              />
+              {valid && <Ionicons name="checkmark-circle" size={16} color={colors.success} />}
+              {bad && <Ionicons name="alert-circle" size={16} color={colors.danger} />}
+            </View>
+          </View>
+        );
+      })()}
 
       <AppText style={[styles.sectionLabel, { color: colors.textSecondary }]}>{labels.times}</AppText>
       <View style={[styles.timesGrid, isRTL && styles.rowRTL]}>
@@ -221,6 +313,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
+  dayChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 52,
+  },
+  dayChipText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
   timesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -275,4 +380,3 @@ const styles = StyleSheet.create({
     opacity: 0.95,
   },
 });
-
