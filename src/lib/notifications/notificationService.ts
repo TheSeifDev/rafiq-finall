@@ -1,24 +1,31 @@
 /**
- * Local Notification Service for Rafiq.
+ * Local + Remote Notification Service for Rafiq.
  *
- * ✅ Uses expo-notifications DIRECTLY — local notifications work in Expo Go.
- * ❌ NO push tokens, NO getExpoPushTokenAsync, NO addPushTokenListener.
+ * ✅ Local scheduling works in Expo Go via scheduleNotificationAsync().
+ * ✅ Remote push guarded: skipped in Expo Go, active in production.
+ * ✅ Expo Go uses TIME_INTERVAL triggers (reliable one-shot → re-scheduled on delivery).
+ * ✅ Production uses DAILY repeating triggers.
  */
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import type { NotificationPrefs } from '../../store/app.store';
 
-// ─── Global handler (call at module level → runs before any scheduling) ──
+// ─── Environment detection ──────────────────────────────────
+export const IS_EXPO_GO = Constants.appOwnership === 'expo';
+
+// ─── Global handler (module-level — runs before any scheduling) ──
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowBanner: true,   // ← الجديد
-    shouldShowList: true,     // ← الجديد
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
 });
-// ─── Permission ─────────────────────────────────────────────
+
+// ─── Permission (local only — no token) ─────────────────────
 
 export async function requestNotificationPermission(): Promise<boolean> {
   const { status: existing } = await Notifications.getPermissionsAsync();
@@ -44,6 +51,20 @@ export async function ensureAndroidChannel(): Promise<void> {
 
 export function buildIdentifier(medicationId: string, hour: number, minute: number): string {
   return `med_${medicationId}_${hour}_${minute}`;
+}
+
+// ─── Time calculation for Expo Go ───────────────────────────
+
+/**
+ * Calculate seconds from now until the next occurrence of hour:minute.
+ * Used by Expo Go's TIME_INTERVAL trigger (one-shot, re-scheduled on delivery).
+ */
+export function secondsUntilNext(hour: number, minute: number): number {
+  const now = new Date();
+  const next = new Date();
+  next.setHours(hour, minute, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  return Math.max(10, Math.floor((next.getTime() - now.getTime()) / 1000));
 }
 
 // ─── Schedule a single daily reminder ───────────────────────
@@ -83,11 +104,20 @@ export async function scheduleMedicationReminder(params: {
       sound: 'default',
       ...(Platform.OS === 'android' && { channelId: 'medications' }),
     },
-trigger: {
-  type: Notifications.SchedulableTriggerInputTypes.DAILY,
-  hour,
-  minute,
-},
+    trigger: IS_EXPO_GO
+      ? {
+          // Expo Go: TIME_INTERVAL is reliable. One-shot, re-scheduled on delivery
+          // via addNotificationReceivedListener in RootNavigator.
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: secondsUntilNext(hour, minute),
+          repeats: false,
+        }
+      : {
+          // Production: proper DAILY repeating trigger
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour,
+          minute,
+        },
   });
 }
 

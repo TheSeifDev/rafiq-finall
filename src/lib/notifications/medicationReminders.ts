@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
 import type { Medication, MedicationLog } from '../../services/medication.service';
 import { parseMedicationTimes } from '../medications/medicationSchedule';
 import { classifyStock } from '../medications/medicationMath';
@@ -39,6 +38,54 @@ function parseHHMM(time: string): { hour: number; minute: number } | null {
   return { hour, minute };
 }
 
+// ─── Internal storage helpers (exported for reconciliation) ──
+
+async function readMap(patientId: string): Promise<ScheduledMap | null> {
+  const raw = await AsyncStorage.getItem(mapKey(patientId));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ScheduledMap;
+  } catch {
+    return null;
+  }
+}
+
+async function writeMap(patientId: string, map: ScheduledMap): Promise<void> {
+  await AsyncStorage.setItem(mapKey(patientId), JSON.stringify(map));
+}
+
+// ─── Reconciliation ─────────────────────────────────────────
+
+/**
+ * Reconcile the AsyncStorage map against the OS scheduler.
+ * Removes stored IDs for notifications that no longer exist in the OS
+ * (already fired, cancelled by OS, or expired).
+ *
+ * Call this once on app startup (from initNotificationsOnce).
+ */
+export async function reconcileStoredMap(patientId: string): Promise<void> {
+  const stored = await readMap(patientId);
+  if (!stored) return;
+
+  const scheduledList = await Notifications.getAllScheduledNotificationsAsync();
+  const scheduledIds = new Set(scheduledList.map((n) => n.identifier));
+
+  let changed = false;
+  for (const medId of Object.keys(stored)) {
+    for (const key of Object.keys(stored[medId] ?? {})) {
+      if (!scheduledIds.has(stored[medId][key])) {
+        delete stored[medId][key];
+        changed = true;
+      }
+    }
+    if (Object.keys(stored[medId] ?? {}).length === 0) {
+      delete stored[medId];
+    }
+  }
+
+  if (changed) await writeMap(patientId, stored);
+}
+
 /**
  * Initialize notification handler + Android channels.
  * Called once from App.tsx on startup.
@@ -59,6 +106,9 @@ export async function ensureNotificationPermission(): Promise<boolean> {
 /**
  * Sync medication reminders — call after load() or save.
  * Uses DIRECT expo-notifications (works in Expo Go).
+ *
+ * Key fix: verifies stored notification IDs against the OS scheduler
+ * before trusting them. Stale IDs (fired or cancelled) are re-scheduled.
  */
 export async function syncMedicationReminders(opts: {
   patientId: string;
@@ -79,6 +129,12 @@ export async function syncMedicationReminders(opts: {
   if (!allowed) return;
 
   const existing = await readMap(patientId);
+
+  // ✅ FIX B1: Fetch OS scheduler state ONCE before the loop.
+  // This lets us verify that stored IDs actually exist in the OS.
+  const scheduledList = await Notifications.getAllScheduledNotificationsAsync();
+  const scheduledIds = new Set(scheduledList.map((n) => n.identifier));
+
   const nextMap: ScheduledMap = {};
 
   for (const med of medications) {
@@ -96,12 +152,13 @@ export async function syncMedicationReminders(opts: {
       const existingId = existing?.[med.id]?.[key];
       if (!nextMap[med.id]) nextMap[med.id] = {};
 
-      if (existingId) {
+      // ✅ FIX B1: Only skip re-scheduling if the ID actually exists in the OS.
+      if (existingId && scheduledIds.has(existingId)) {
         nextMap[med.id][key] = existingId;
         continue;
       }
 
-      // ✅ Schedule via notificationService (direct expo-notifications)
+      // Not in OS (fired, cancelled, or never scheduled) — schedule now.
       try {
         const id = await scheduleMedicationReminder({
           medicationId: med.id,
@@ -192,20 +249,6 @@ async function cancelOrphans(existing: ScheduledMap | null, nextMap: ScheduledMa
   }
 }
 
-async function readMap(patientId: string): Promise<ScheduledMap | null> {
-  const raw = await AsyncStorage.getItem(mapKey(patientId));
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as ScheduledMap;
-  } catch {
-    return null;
-  }
-}
-
-async function writeMap(patientId: string, map: ScheduledMap): Promise<void> {
-  await AsyncStorage.setItem(mapKey(patientId), JSON.stringify(map));
-}
-
 // -----------------------
 // Alerts: low stock / missed dose
 // -----------------------
@@ -267,7 +310,7 @@ async function evaluateAndSendAlerts(opts: {
       const key = `missed_dose_check:${med.id}:${tk}`;
       if (state[key]) continue;
 
-const title = language === 'ar' ? 'تحقق من جرعات اليوم' : `Check today's doses`;
+      const title = language === 'ar' ? 'تحقق من جرعات اليوم' : `Check today's doses`;
       const body =
         language === 'ar'
           ? `هل تم أخذ جرعات ${med.name} اليوم؟ افتح صفحة الأدوية للتأكيد.`
