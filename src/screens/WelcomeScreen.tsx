@@ -6,15 +6,15 @@ import {
   Pressable,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Screen } from '../../components/ui/Screen';
-import { AppText } from '../../components/ui/AppText';
-import { AppButton } from '../../components/ui/AppButton';
-import { AuthTopControls } from '../../components/AuthTopControls';
-import { spacing } from '../../theme';
-import { useTheme } from '../../theme/useTheme';
-import { useAppStore } from '../../store/app.store';
-import { translations } from '../../constants/translations';
-import type { AuthStackParamList } from '../../navigation/types';
+import { Screen } from '../components/ui/Screen';
+import { AppText } from '../components/ui/AppText';
+import { AppButton } from '../components/ui/AppButton';
+import { AuthTopControls } from '../components/AuthTopControls';
+import { spacing } from '../theme';
+import { useTheme } from '../theme/useTheme';
+import { useAppStore } from '../store/app.store';
+import { translations } from '../constants/translations';
+import type { AuthStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Welcome'>;
 
@@ -41,7 +41,7 @@ export function WelcomeScreen({ navigation }: Props): React.JSX.Element {
         <View style={styles.brandSection}>
           <View style={[styles.logoCard, { backgroundColor: subtleSurface, borderColor: subtleBorder }]}>
             <Image
-              source={require('../../../assets/logo.png')}
+              source={require('../../assets/logo.png')}
               style={styles.logo}
               resizeMode="contain"
             />
