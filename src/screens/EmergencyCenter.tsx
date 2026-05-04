@@ -1,196 +1,332 @@
 import React from 'react';
-import { 
-  StyleSheet, Text, View, ScrollView, 
-  TouchableOpacity,  StatusBar, 
-  Linking, Platform 
+import {
+  StyleSheet,
+  View,
+  ScrollView,
+  TouchableOpacity,
+  Linking,
+  StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import { Screen } from '../components/ui/Screen';
+import { AppText } from '../components/ui/AppText';
+import { useTheme } from '../theme/useTheme';
+import { useAppStore } from '../store/app.store';
+import { spacing } from '../theme';
 
-interface EmergencyItem {
+interface EmergencyAction {
   id: string;
-  title: string;
-  subtitle: string;
-  status: string;
-  statusColor: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  btnText: string;
-  btnColor: string;
-  action?: () => void;
+  titleAr: string;
+  titleEn: string;
+  subtitleAr: string;
+  subtitleEn: string;
+  statusAr: string;
+  statusEn: string;
+  statusTone: 'success' | 'warning' | 'primary';
+  icon: string;
+  actionType: 'call' | 'navigate' | 'info';
+  actionValue?: string;
 }
 
-interface EmergencyCenterProps {
-  onNavigate: (screen: any) => void;
-}
-
-const emergencyData: EmergencyItem[] = [
+const EMERGENCY_ACTIONS: EmergencyAction[] = [
   {
     id: '1',
-    title: 'الاتصال المباشر بالإسعاف',
-    subtitle: 'رقم الطوارئ الموحد لتقديم البلاغات العاجلة',
-    status: 'متوفر الآن',
-    statusColor: '#4ade80',
-    icon: 'phone-plus',
-    btnText: 'اتصال سريع',
-    btnColor: '#ef4444',
-    action: () => Linking.openURL('tel:997'),
+    titleAr: 'الاتصال المباشر بالإسعاف',
+    titleEn: 'Call Emergency Services',
+    subtitleAr: 'رقم الطوارئ الموحد لتقديم البلاغات العاجلة',
+    subtitleEn: 'Unified emergency number for urgent reports',
+    statusAr: 'متوفر الآن',
+    statusEn: 'Available Now',
+    statusTone: 'success',
+    icon: 'call-outline',
+    actionType: 'call',
+    actionValue: 'tel:997',
   },
   {
     id: '2',
-    title: 'أقرب المستشفيات المعتمدة',
-    subtitle: '• مستشفى الملك فهد (5 كم)\n• مستشفى التخصصي (3 كم)',
-    status: 'مفتوح 24/7',
-    statusColor: '#4ade80',
-    icon: 'hospital-marker',
-    btnText: 'فتح الخريطة',
-    btnColor: '#334155',
+    titleAr: 'أقرب المستشفيات المعتمدة',
+    titleEn: 'Nearest Certified Hospitals',
+    subtitleAr: '• مستشفى الملك فهد (5 كم)\n• مستشفى التخصصي (3 كم)',
+    subtitleEn: '• King Fahad Hospital (5 km)\n• Specialist Hospital (3 km)',
+    statusAr: 'مفتوح 24/7',
+    statusEn: 'Open 24/7',
+    statusTone: 'success',
+    icon: 'location-outline',
+    actionType: 'navigate',
   },
   {
     id: '3',
-    title: 'دليل الإسعافات الأولية',
-    subtitle: 'تعامل بذكاء مع حالات الاختناق، النزيف، والحروق',
-    status: 'دليل تفاعلي',
-    statusColor: '#3b82f6',
-    icon: 'medical-bag',
-    btnText: 'عرض الدليل',
-    btnColor: '#334155',
+    titleAr: 'دليل الإسعافات الأولية',
+    titleEn: 'First Aid Guide',
+    subtitleAr: 'تعامل بذكاء مع حالات الاختناق، النزيف، والحروق',
+    subtitleEn: 'Handle choking, bleeding, and burns smartly',
+    statusAr: 'دليل تفاعلي',
+    statusEn: 'Interactive Guide',
+    statusTone: 'primary',
+    icon: 'medkit-outline',
+    actionType: 'info',
   },
   {
-    id: '5',
-    title: 'استشارة طبية مرئية',
-    subtitle: 'تحدث مع طبيب طوارئ عبر الفيديو مباشرة',
-    status: 'متاح (انتظار 2 د)',
-    statusColor: '#f97316',
-    icon: 'video-plus',
-    btnText: 'بدء الجلسة',
-    btnColor: '#334155',
+    id: '4',
+    titleAr: 'استشارة طبية مرئية',
+    titleEn: 'Video Medical Consultation',
+    subtitleAr: 'تحدث مع طبيب طوارئ عبر الفيديو مباشرة',
+    subtitleEn: 'Talk to an emergency doctor via live video',
+    statusAr: 'متاح (انتظار 2 د)',
+    statusEn: 'Available (2 min wait)',
+    statusTone: 'warning',
+    icon: 'videocam-outline',
+    actionType: 'info',
   },
 ];
 
-export default function EmergencyCenter({ onNavigate }: EmergencyCenterProps) {
+export default function EmergencyCenter() {
+  const { colors, darkMode } = useTheme();
+  const language = useAppStore((s) => s.language);
+  const isAr = language === 'ar';
+
+  const surfaceBg = darkMode ? 'rgba(30, 41, 59, 0.80)' : 'rgba(255, 255, 255, 0.92)';
+  const cardBorder = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
+
+  const toneColors: Record<string, string> = {
+    success: colors.success,
+    warning: colors.warning,
+    primary: colors.primary,
+    danger: colors.danger,
+  };
+
+  const handleAction = (action: EmergencyAction) => {
+    if (action.actionType === 'call' && action.actionValue) {
+      Linking.openURL(action.actionValue);
+    }
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => onNavigate('home')} 
-          style={styles.backButton}
-        >
-          <MaterialCommunityIcons name="chevron-left" size={32} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>مركز الطوارئ</Text>
-        <Text style={styles.headerSubtitle}>استجابة فورية للخدمات الطبية العاجلة</Text>
+    <Screen>
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
+
+      {/* ── Header ── */}
+      <View style={[styles.header, { borderBottomColor: cardBorder }]}>
+        <View style={[styles.headerIcon, { backgroundColor: colors.danger + '15' }]}>
+          <Ionicons name="shield-checkmark" size={24} color={colors.danger} />
+        </View>
+        <AppText style={[styles.headerTitle, { color: colors.textPrimary }]}>
+          {isAr ? 'مركز الطوارئ' : 'Emergency Center'}
+        </AppText>
+        <AppText style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
+          {isAr ? 'استجابة فورية للخدمات الطبية العاجلة' : 'Instant response for urgent medical services'}
+        </AppText>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {emergencyData.map((item) => (
-          <TouchableOpacity 
-            key={item.id} 
-            activeOpacity={0.9} 
-            style={styles.card}
-            onPress={item.action}
-          >
-            <View style={styles.statusContainer}>
-              <Text style={[styles.statusText, { color: item.statusColor }]}>{item.status}</Text>
-              <View style={[styles.dot, { backgroundColor: item.statusColor }]} />
+      {/* ── Emergency Actions ── */}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Quick Call Banner */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => Linking.openURL('tel:997')}
+          style={[styles.callBanner, { backgroundColor: colors.danger }]}
+        >
+          <View style={styles.callBannerContent}>
+            <View style={styles.callBannerLeft}>
+              <View style={[styles.callIcon, { backgroundColor: 'rgba(255,255,255,0.20)' }]}>
+                <Ionicons name="call" size={22} color="#fff" />
+              </View>
+              <View style={styles.callTextWrap}>
+                <AppText style={styles.callTitle}>
+                  {isAr ? 'اتصال طوارئ سريع' : 'Quick Emergency Call'}
+                </AppText>
+                <AppText style={styles.callSubtitle}>997</AppText>
+              </View>
             </View>
+            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.6)" />
+          </View>
+        </TouchableOpacity>
 
-            <View style={styles.cardBody}>
-              <View style={styles.textContainer}>
-                <Text style={styles.cardTitle}>{item.title}</Text>
-                <Text style={styles.cardSubtitle}>{item.subtitle}</Text>
-                
-                <View style={[styles.button, { backgroundColor: item.btnColor }]}>
-                  <Text style={styles.buttonText}>{item.btnText}</Text>
+        {/* Action Cards */}
+        {EMERGENCY_ACTIONS.filter((a) => a.id !== '1').map((action) => {
+          const statusColor = toneColors[action.statusTone] ?? colors.primary;
+
+          return (
+            <TouchableOpacity
+              key={action.id}
+              activeOpacity={0.7}
+              onPress={() => handleAction(action)}
+              style={[styles.card, { backgroundColor: surfaceBg, borderColor: cardBorder }]}
+            >
+              {/* Status */}
+              <View style={styles.cardStatusRow}>
+                <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                <AppText style={[styles.statusText, { color: statusColor }]}>
+                  {isAr ? action.statusAr : action.statusEn}
+                </AppText>
+              </View>
+
+              {/* Body */}
+              <View style={styles.cardBody}>
+                <View style={[styles.cardIconWrap, { backgroundColor: statusColor + '12' }]}>
+                  <Ionicons name={action.icon as any} size={24} color={statusColor} />
+                </View>
+                <View style={styles.cardTextWrap}>
+                  <AppText style={[styles.cardTitle, { color: colors.textPrimary }]}>
+                    {isAr ? action.titleAr : action.titleEn}
+                  </AppText>
+                  <AppText style={[styles.cardSubtitle, { color: colors.textSecondary }]}>
+                    {isAr ? action.subtitleAr : action.subtitleEn}
+                  </AppText>
                 </View>
               </View>
 
-              <View style={styles.iconContainer}>
-                 <View style={styles.iconCircle}>
-                    <MaterialCommunityIcons name={item.icon} size={35} color="#f87171" />
-                 </View>
+              {/* Action hint */}
+              <View style={[styles.cardAction, { backgroundColor: statusColor + '10', borderColor: statusColor + '20' }]}>
+                <AppText style={[styles.cardActionText, { color: statusColor }]}>
+                  {action.actionType === 'call'
+                    ? (isAr ? 'اتصال سريع' : 'Quick Call')
+                    : action.actionType === 'navigate'
+                      ? (isAr ? 'فتح الخريطة' : 'Open Map')
+                      : (isAr ? 'عرض التفاصيل' : 'View Details')}
+                </AppText>
+                <Ionicons name="chevron-forward" size={14} color={statusColor} />
               </View>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+            </TouchableOpacity>
+          );
+        })}
 
-      <View style={[styles.bottomNav, { paddingBottom: Platform.OS === 'ios' ? 25 : 10 }]}>
-        <NavItem icon="account-circle-outline" label="الملف" active={false} onPress={() => onNavigate('profile')} />
-        <NavItem icon="pill" label="الأدوية" active={false} onPress={() => onNavigate('clinic')} />
-        <NavItem icon="heart-pulse" label="الحيوية" active={false} onPress={() => onNavigate('vitals')} />
-        <NavItem icon="home-variant" label="الرئيسية" active={false} onPress={() => onNavigate('home')} />
-      </View>
-    </SafeAreaView>
+        <View style={{ height: spacing['2xl'] }} />
+      </ScrollView>
+    </Screen>
   );
 }
 
-interface NavItemProps {
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}
-
-const NavItem = ({ icon, label, active, onPress }: NavItemProps) => (
-  <TouchableOpacity style={styles.navItem} onPress={onPress}>
-    <MaterialCommunityIcons name={icon} size={26} color={active ? '#00C2FF' : '#64748B'} />
-    <Text style={[styles.navLabel, { color: active ? '#00C2FF' : '#64748B' }]}>{label}</Text>
-  </TouchableOpacity>
-);
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0A0E17' },
-  header: { 
-    paddingVertical: 20, 
-    alignItems: 'center', 
-    borderBottomWidth: 1, 
-    borderBottomColor: '#1E2330',
-    position: 'relative'
+  /* ── Header ── */
+  header: {
+    alignItems: 'center',
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 1,
+    gap: 6,
   },
-  backButton: {
-    position: 'absolute',
-    left: 15,
-    top: 22,
-    zIndex: 10
+  headerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
-  headerTitle: { fontSize: 24, fontWeight: '900', color: '#fff' },
-  headerSubtitle: { fontSize: 13, color: '#64748B', marginTop: 4 },
-  scrollContent: { padding: 20, paddingBottom: 120 },
-  card: { 
-    backgroundColor: '#161B26', 
-    borderRadius: 24, 
-    padding: 20, 
-    marginBottom: 16, 
-    borderWidth: 1, 
-    borderColor: '#1E2330',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '800',
   },
-  statusContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 12 },
-  statusText: { fontSize: 12, fontWeight: '700', marginRight: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
-  cardBody: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  textContainer: { flex: 1, alignItems: 'flex-end', paddingRight: 15 },
-  cardTitle: { fontSize: 17, fontWeight: '800', color: '#fff', textAlign: 'right' },
-  cardSubtitle: { fontSize: 13, color: '#94A3B8', textAlign: 'right', marginVertical: 8, lineHeight: 18 },
-  iconContainer: { alignItems: 'center', justifyContent: 'center' },
-  iconCircle: { 
-    width: 65, height: 65, borderRadius: 20, 
-    backgroundColor: 'rgba(248, 113, 113, 0.1)', 
-    alignItems: 'center', justifyContent: 'center' 
+  headerSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
   },
-  button: { paddingVertical: 8, paddingHorizontal: 20, borderRadius: 12, marginTop: 8 },
-  buttonText: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  bottomNav: { 
-    position: 'absolute', bottom: 0, width: '100%', height: 85, 
-    backgroundColor: '#0A0E17', flexDirection: 'row', 
-    justifyContent: 'space-around', alignItems: 'center', 
-    borderTopWidth: 1, borderTopColor: '#1E2330' 
+
+  /* ── Scroll ── */
+  scrollContent: {
+    padding: spacing.lg,
+    gap: spacing.md,
   },
-  navItem: { alignItems: 'center', justifyContent: 'center', minWidth: 60 },
-  navLabel: { fontSize: 10, fontWeight: '700', marginTop: 4 },
+
+  /* ── Quick Call Banner ── */
+  callBanner: {
+    borderRadius: 18,
+    padding: spacing.lg,
+  },
+  callBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  callBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  callIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  callTextWrap: {
+    gap: 2,
+  },
+  callTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  callSubtitle: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: 2,
+  },
+
+  /* ── Action Card ── */
+  card: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  cardStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  cardBody: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  cardIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardTextWrap: {
+    flex: 1,
+    gap: 4,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  cardSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  cardAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  cardActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
 });

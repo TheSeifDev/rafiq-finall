@@ -40,8 +40,8 @@ interface DateGroup {
 const CATEGORY_CONFIG: Record<NotifCategory, { icon: string; color: string }> = {
   medication: { icon: 'medkit', color: '#10B981' },
   low_stock: { icon: 'alert-circle', color: '#F59E0B' },
-  emergency: { icon: 'shield-checkmark', color: '#EF4444' },
-  chat: { icon: 'chatbubbles', color: '#0077C8' },
+  emergency: { icon: 'shield-checkmark', color: '#FF3B3B' },
+  chat: { icon: 'chatbubbles', color: '#00C2FF' },
   general: { icon: 'notifications', color: '#94A3B8' },
 };
 
@@ -113,7 +113,7 @@ function FilterChip({
   colors: any;
   darkMode: boolean;
 }) {
-  const bg = active ? colors.primary : (darkMode ? '#1E2330' : '#F1F5F9');
+  const bg = active ? colors.primary : (darkMode ? 'rgba(255,255,255,0.06)' : '#F1F5F9');
   const textColor = active ? '#FFFFFF' : colors.textSecondary;
 
   return (
@@ -152,7 +152,7 @@ function NotificationCard({
   const cfg = CATEGORY_CONFIG[notification.category];
   const surfaceBg = darkMode ? 'rgba(30, 41, 59, 0.80)' : 'rgba(255, 255, 255, 0.92)';
   const unreadBg = !notification.is_read
-    ? (darkMode ? 'rgba(0, 119, 200, 0.06)' : 'rgba(0, 119, 200, 0.04)')
+    ? (darkMode ? 'rgba(0, 194, 255, 0.06)' : 'rgba(0, 194, 255, 0.04)')
     : 'transparent';
 
   return (

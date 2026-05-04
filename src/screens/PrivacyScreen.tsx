@@ -221,14 +221,14 @@ export function PrivacyScreen({ navigation }: Props): React.JSX.Element {
           <AppText style={[styles.sectionLabel, { color: colors.textSecondary }]}>{t.permissions}</AppText>
           <View style={[styles.card, { backgroundColor: surfaceBg, borderColor: cardBorder }]}>
             <InfoRow
-              icon="location-outline" iconColor="#0EA5E9"
+              icon="location-outline" iconColor="#00C2FF"
               title={t.locationPerm}
               description={locationEnabled ? (isAr ? 'مفعّل' : 'Granted') : (isAr ? 'غير مفعّل' : 'Not granted')}
               darkMode={darkMode} colors={colors}
               rightContent={makeSwitch(locationEnabled, handleLocationToggle)}
             />
             <InfoRow
-              icon="heart-outline" iconColor="#EF4444"
+              icon="heart-outline" iconColor="#FF3B3B"
               title={t.healthPerm}
               description={isAr ? 'الموافقة على تخزين بيانات صحية' : 'Consent to store health data'}
               darkMode={darkMode} colors={colors}

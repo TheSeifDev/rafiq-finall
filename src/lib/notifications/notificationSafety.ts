@@ -85,14 +85,14 @@ export async function safeInitNotifications(): Promise<void> {
         name: 'Medications',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 200, 100, 200],
-        lightColor: '#0077C8',
+        lightColor: '#00C2FF',
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
 
       await Notifications.setNotificationChannelAsync('general', {
         name: 'General',
         importance: Notifications.AndroidImportance.DEFAULT,
-        lightColor: '#0077C8',
+        lightColor: '#00C2FF',
       });
     } catch (err) {
       console.warn('[Notifications] Channel setup failed:', err);

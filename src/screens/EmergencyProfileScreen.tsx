@@ -267,13 +267,13 @@ export function EmergencyProfileScreen({ navigation }: Props): React.JSX.Element
       {/* Contact Add/Edit Modal */}
       <Modal visible={contactModal} transparent animationType="fade" onRequestClose={() => setContactModal(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: darkMode ? '#1E293B' : '#fff' }]}>
+          <View style={[styles.modalContent, { backgroundColor: darkMode ? '#111827' : '#fff' }]}>
             <AppText style={[styles.modalTitle, { color: colors.textPrimary }]}>
               {editingContactId ? t.edit : t.addContact}
             </AppText>
-            <TextInput style={[styles.modalInput, { color: colors.textPrimary, borderColor: darkMode ? '#334155' : '#E2E8F0' }]}
+            <TextInput style={[styles.modalInput, { color: colors.textPrimary, borderColor: darkMode ? 'rgba(255,255,255,0.10)' : '#E2E8F0' }]}
               placeholder={t.contactName} placeholderTextColor={colors.textSecondary} value={modalName} onChangeText={setModalName} />
-            <TextInput style={[styles.modalInput, { color: colors.textPrimary, borderColor: darkMode ? '#334155' : '#E2E8F0' }]}
+            <TextInput style={[styles.modalInput, { color: colors.textPrimary, borderColor: darkMode ? 'rgba(255,255,255,0.10)' : '#E2E8F0' }]}
               placeholder={t.contactPhone} placeholderTextColor={colors.textSecondary} value={modalPhone} onChangeText={setModalPhone} keyboardType="phone-pad" />
             <AppText style={[styles.fieldLabel, { color: colors.textSecondary }]}>{t.contactRelation}</AppText>
             <PillSelector options={RELATION_OPTIONS} selected={modalRelation} onSelect={setModalRelation} />
@@ -284,7 +284,7 @@ export function EmergencyProfileScreen({ navigation }: Props): React.JSX.Element
             </View>
             <View style={styles.modalActions}>
               <TouchableOpacity onPress={() => setContactModal(false)}
-                style={[styles.modalBtn, { backgroundColor: darkMode ? '#334155' : '#F1F5F9' }]}>
+                style={[styles.modalBtn, { backgroundColor: darkMode ? 'rgba(255,255,255,0.08)' : '#F1F5F9' }]}>
                 <AppText style={{ color: colors.textSecondary, fontWeight: '600' }}>{t.cancel}</AppText>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleSaveContact}

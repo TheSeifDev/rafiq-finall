@@ -314,7 +314,7 @@ export function NotificationSettingsScreen(): React.JSX.Element {
         >
           <ToggleRow
             icon="medical-outline"
-            iconColor="#0077C8"
+            iconColor="#00C2FF"
             label={t.medicationReminders}
             description={t.medicationRemindersDesc}
             value={prefs.medicationReminders}
@@ -334,7 +334,7 @@ export function NotificationSettingsScreen(): React.JSX.Element {
           />
           <ToggleRow
             icon="alert-circle-outline"
-            iconColor="#EF4444"
+            iconColor="#FF3B3B"
             label={t.emergencyAlerts}
             description={t.emergencyAlertsDesc}
             value={prefs.emergencyAlerts}
@@ -369,7 +369,7 @@ export function NotificationSettingsScreen(): React.JSX.Element {
         <SectionCard title={t.behavior} darkMode={darkMode} colors={colors}>
           <ToggleRow
             icon="volume-high-outline"
-            iconColor="#0EA5E9"
+            iconColor="#00C2FF"
             label={t.sound}
             description={t.soundDesc}
             value={prefs.sound}

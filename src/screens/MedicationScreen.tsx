@@ -33,10 +33,10 @@ export default function MedicationScreen({ onBack, isDarkMode, lang }: Props) {
 
   const isRTL = lang === 'ar';
   const theme = {
-    bg: isDarkMode ? '#121212' : '#F8FAFC',
-    card: isDarkMode ? '#1E1E1E' : '#FFFFFF',
-    text: isDarkMode ? '#FFFFFF' : '#191D32',
-    border: isDarkMode ? '#2D2D2D' : '#E8EDF5',
+    bg: isDarkMode ? '#0A0F1C' : '#F5F7FA',
+    card: isDarkMode ? '#111827' : '#FFFFFF',
+    text: isDarkMode ? '#F1F5F9' : '#1E293B',
+    border: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
   };
 
   useEffect(() => {
@@ -104,7 +104,7 @@ const { data: patient } = await supabase.from('patients').select('id').eq('user_
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#0077C8" style={{ marginTop: 50 }} />
+        <ActivityIndicator size="large" color="#00C2FF" style={{ marginTop: 50 }} />
       ) : (
         <FlatList 
           data={meds}
@@ -112,8 +112,8 @@ const { data: patient } = await supabase.from('patients').select('id').eq('user_
           contentContainerStyle={{ padding: 20 }}
           renderItem={({ item }) => (
             <View style={[styles.medCard, { backgroundColor: theme.card, borderColor: theme.border, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              <View style={[styles.timeBadge, { backgroundColor: isDarkMode ? '#2D2D2D' : '#F1F5F9' }]}>
-                <Text style={{ color: '#0077C8', fontWeight: 'bold' }}>{item.reminder_time.substring(0,5)}</Text>
+              <View style={[styles.timeBadge, { backgroundColor: isDarkMode ? '#1A2332' : '#F1F5F9' }]}>
+                <Text style={{ color: '#00C2FF', fontWeight: 'bold' }}>{item.reminder_time.substring(0,5)}</Text>
               </View>
               <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start', marginHorizontal: 15 }}>
                 <Text style={[styles.medName, { color: theme.text }]}>{item.med_name}</Text>
@@ -167,10 +167,10 @@ const { data: patient } = await supabase.from('patients').select('id').eq('user_
             />
 
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-              <TouchableOpacity style={[styles.btn, { backgroundColor: '#F1F5F9' }]} onPress={() => setModalVisible(false)}>
-                <Text style={{ color: '#64748B' }}>{isRTL ? 'إلغاء' : 'Cancel'}</Text>
+              <TouchableOpacity style={[styles.btn, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#F1F5F9' }]} onPress={() => setModalVisible(false)}>
+                <Text style={{ color: '#94A3B8' }}>{isRTL ? 'إلغاء' : 'Cancel'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.btn, { backgroundColor: '#0077C8' }]} onPress={addMedication}>
+              <TouchableOpacity style={[styles.btn, { backgroundColor: '#00C2FF' }]} onPress={addMedication}>
                 <Text style={{ color: '#FFF', fontWeight: 'bold' }}>{isRTL ? 'حفظ' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
   medCard: { padding: 15, borderRadius: 15, borderWidth: 1, marginBottom: 12, alignItems: 'center' },
   timeBadge: { padding: 8, borderRadius: 10 },
   medName: { fontSize: 16, fontWeight: 'bold' },
-  fab: { position: 'absolute', bottom: 30, right: 30, width: 60, height: 60, borderRadius: 30, backgroundColor: '#0077C8', justifyContent: 'center', alignItems: 'center', elevation: 5 },
+  fab: { position: 'absolute', bottom: 30, right: 30, width: 60, height: 60, borderRadius: 30, backgroundColor: '#00C2FF', justifyContent: 'center', alignItems: 'center', elevation: 5 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
   modalContent: { borderRadius: 25, padding: 25, alignItems: 'center' },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 20 },
