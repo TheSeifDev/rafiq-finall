@@ -14,11 +14,13 @@ export type AuthStackParamList = {
   PrivacyPolicy: undefined;
 };
 
-// ─── Main Tab Navigator ─────────────────────────────────────
+// ─── Main Tab Navigator ──────────────────────────────────────
+// Tabs: Home · Vitals (Measurements) · Medications · Chat (Messages) · Profile
+// Emergency removed from tabs — accessible from HomeScreen
 export type MainTabParamList = {
   Home: undefined;
   Vitals: undefined;
-  Emergency: undefined;
+  Medications: undefined;
   Chat: undefined;
   Profile: NavigatorScreenParams<ProfileStackParamList>;
 };
@@ -28,9 +30,9 @@ export type MainStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList>;
   NotificationCenter: undefined;
   NotificationSettings: undefined;
+  Emergency: undefined;
 };
 
-// ─── Profile Stack (nested inside Profile tab) ──────────────
 // ─── Profile Stack (nested inside Profile tab) ──────────────
 export type ProfileStackParamList = {
   ProfileMain: undefined;
@@ -39,9 +41,10 @@ export type ProfileStackParamList = {
   EmergencyProfile: undefined;
   ChangePassword: undefined;
   Privacy: undefined;
-  TermsOfService: undefined; // ← مش TermsOfServiceScreen
+  TermsOfService: undefined;
   PrivacyPolicy: undefined;
 };
+
 // ─── Screen-prop helpers ────────────────────────────────────
 export type AuthScreenProps<T extends keyof AuthStackParamList> =
   NativeStackScreenProps<AuthStackParamList, T>;

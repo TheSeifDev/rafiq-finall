@@ -1,143 +1,174 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+/**
+ * ChatScreen — Orchestrator.
+ *
+ * Vertical layout (top → bottom):
+ *  ┌─────────────────────────┐
+ *  │  ChatHeader (fixed)     │
+ *  ├─────────────────────────┤
+ *  │  SuggestionsRow         │  ← empty state only
+ *  │  FlatList (flex: 1)     │  ← messages
+ *  │  TypingBubble           │  ← when AI is replying
+ *  │  QuickReplies           │  ← after last AI msg
+ *  │  Composer pill          │  ← always visible
+ *  └─────────────────────────┘
+ *
+ * Bottom clearance:
+ *   composer.marginBottom = tabBarHeight + safeArea.bottom + 8
+ *   FlatList.paddingBottom = same + COMPOSER_H + quickReplies (~56) + spacing
+ */
+import React, { useState, useRef, useCallback, useMemo } from "react";
 import {
   FlatList,
   View,
+  Text,
   StyleSheet,
-  TouchableOpacity,
-  ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Image,
   Animated,
+  TouchableOpacity,
+  TextInput,
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { AppText } from "../components/ui/AppText";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+
 import { Screen } from "../components/ui/Screen";
-import { AppInput } from "../components/ui/AppInput";
+import { ChatHeader } from "../components/chat/ChatHeader";
+import { MessageBubble } from "../components/chat/MessageBubble";
+import { TypingBubble } from "../components/chat/TypingBubble";
+import { QuickReplies } from "../components/chat/QuickReplies";
+import { SuggestionsRow, type Suggestion } from "../components/chat/SuggestionsRow";
+
 import { useLocale } from "../hooks/useLocale";
 import { sendChat, type ChatMessage } from "../services/chat.service";
 import { useTheme } from "../theme/useTheme";
-import { spacing, radius } from "../theme";
 
-/* ── Palette ── */
-const palette = (dark: boolean) => ({
-  bg: dark ? "#0A0F1C" : "#F5F7FA",
-  surface: dark ? "#111827" : "#FFFFFF",
-  card: dark ? "rgba(26,35,50,0.85)" : "rgba(255,255,255,0.92)",
-  cardBorder: dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
-  primary: "#00C2FF",
-  primarySoft: dark ? "rgba(0,194,255,0.12)" : "rgba(0,194,255,0.08)",
-  text: dark ? "#F1F5F9" : "#1E293B",
-  textMuted: dark ? "#94A3B8" : "#64748B",
-  userBubble: "#00C2FF",
-  assistantBubble: dark ? "rgba(26,35,50,0.90)" : "rgba(241,245,249,0.95)",
-  assistantBorder: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
-  success: "#10B981",
-  danger: "#FF3B3B",
-  warning: "#F59E0B",
-  purple: "#A855F7",
-  inputBg: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
-  inputBorder: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
-});
+// ─── Layout constants (8pt system) ───────────────────────────────────────────
+const COMPOSER_H = 56;      // pill input bar height
+const QUICK_REPLIES_H = 56; // estimated quick replies section height
 
-/* ── Typing dots ── */
-function TypingDots({ color }: { color: string }) {
-  const dots = [
-    useRef(new Animated.Value(0.3)).current,
-    useRef(new Animated.Value(0.3)).current,
-    useRef(new Animated.Value(0.3)).current,
-  ];
-  useEffect(() => {
-    const anims = dots.map((dot, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 180),
-          Animated.timing(dot, { toValue: 1, duration: 300, useNativeDriver: true }),
-          Animated.timing(dot, { toValue: 0.3, duration: 300, useNativeDriver: true }),
-        ]),
-      ),
-    );
-    anims.forEach((a) => a.start());
-    return () => anims.forEach((a) => a.stop());
-  }, []);
-  return (
-    <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
-      {dots.map((opacity, i) => (
-        <Animated.View key={i} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color, opacity }} />
-      ))}
-    </View>
-  );
-}
+// ─── Send Button ─────────────────────────────────────────────────────────────
 
-/* ── Message entrance ── */
-function AnimatedMessage({ children }: { children: React.ReactNode }) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(12)).current;
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 280, useNativeDriver: true }),
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 4 }),
-    ]).start();
-  }, []);
-  return (
-    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
-      {children}
-    </Animated.View>
-  );
-}
-
-/* ── Send button with press scale ── */
-function SendButton({ onPress, disabled, isRTL }: { onPress: () => void; disabled: boolean; isRTL: boolean }) {
+function SendButton({
+  onPress,
+  disabled,
+  isRTL,
+  color,
+}: {
+  onPress: () => void;
+  disabled: boolean;
+  isRTL: boolean;
+  color: string;
+}) {
   const scale = useRef(new Animated.Value(1)).current;
-  const onIn = () => Animated.spring(scale, { toValue: 0.9, useNativeDriver: true, speed: 50 }).start();
-  const onOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 50 }).start();
+
+  const pressIn = () =>
+    Animated.spring(scale, {
+      toValue: 0.84,
+      useNativeDriver: true,
+      speed: 100,
+      bounciness: 0,
+    }).start();
+
+  const pressOut = () =>
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 80,
+      bounciness: 6,
+    }).start();
+
   return (
-    <TouchableOpacity activeOpacity={1} onPressIn={onIn} onPressOut={onOut} onPress={onPress} disabled={disabled}>
-      <Animated.View style={[st.sendBtn, { backgroundColor: "#00C2FF", opacity: disabled ? 0.4 : 1, transform: [{ scale }] }]}>
-        <Ionicons name="send" size={18} color="#fff" style={{ transform: [{ rotate: isRTL ? "180deg" : "0deg" }] }} />
+    <TouchableOpacity
+      activeOpacity={1}
+      onPressIn={pressIn}
+      onPressOut={pressOut}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      <Animated.View
+        style={[
+          styles.sendBtn,
+          {
+            backgroundColor: disabled ? color + "50" : color,
+            transform: [{ scale }],
+          },
+        ]}
+      >
+        <Ionicons
+          name="send"
+          size={15}
+          color="#fff"
+          style={{ transform: [{ rotate: isRTL ? "180deg" : "0deg" }] }}
+        />
       </Animated.View>
     </TouchableOpacity>
   );
 }
 
-type Suggestion = { icon: string; label: string; color: string };
+// ═══════════════════════════════════════════════════════════════════════════════
 
-/* ════════ MAIN CHAT SCREEN ════════ */
 export function ChatScreen(): React.JSX.Element {
   const { t, isRTL } = useLocale();
-  const { darkMode } = useTheme();
-  const C = palette(darkMode);
+  const { colors } = useTheme();
   const { width: screenW } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  // ── Tab bar clearance ─────────────────────────────────────────────────────
+  let tabH = 0;
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    tabH = useBottomTabBarHeight();
+  } catch {
+    tabH = Platform.OS === "ios" ? 83 : 62;
+  }
+  const bottomOffset = tabH + insets.bottom;
+
+  // ── State ─────────────────────────────────────────────────────────────────
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [typing, setTyping] = useState(false);
-  const flatListRef = useRef<FlatList>(null);
+  const listRef = useRef<FlatList>(null);
 
-  const suggestions: Suggestion[] = [
-    { icon: "medical", label: t("forgotMeds"), color: C.purple },
-    { icon: "heart", label: t("chestPain"), color: C.danger },
-    { icon: "thermometer", label: t("haveFever"), color: C.warning },
-    { icon: "bandage", label: t("haveWound"), color: C.primary },
-    { icon: "call", label: t("callEmergency"), color: C.success },
-  ];
+  // ── Static data (memoized) ────────────────────────────────────────────────
+  const SUGGESTIONS = useMemo<Suggestion[]>(
+    () => [
+      { icon: "medical",     label: t("forgotMeds"),    color: colors.warning },
+      { icon: "heart",       label: t("chestPain"),     color: colors.danger  },
+      { icon: "thermometer", label: t("haveFever"),     color: colors.warning },
+      { icon: "bandage",     label: t("haveWound"),     color: colors.primary },
+      { icon: "call",        label: t("callEmergency"), color: colors.success },
+    ],
+    [t, colors],
+  );
 
-  const quickReplies = [t("drankLittleWater"), t("headachePersistent"), t("yesHaveFever")];
+  const QUICK_REPLIES = useMemo(
+    () => [t("drankLittleWater"), t("headachePersistent"), t("yesHaveFever")],
+    [t],
+  );
 
+  const showQuickReplies =
+    !typing &&
+    messages.length > 0 &&
+    messages[messages.length - 1].role === "assistant";
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleSend = useCallback(
-    async (overrideText?: string) => {
-      const messageText = overrideText || text.trim();
-      if (!messageText) return;
-      const userMessage: ChatMessage = { role: "user", content: messageText };
-      const nextMessages = [...messages, userMessage];
-      setMessages(nextMessages);
+    async (override?: string) => {
+      const msg = (override ?? text).trim();
+      if (!msg) return;
+
+      const next: ChatMessage[] = [...messages, { role: "user", content: msg }];
+      setMessages(next);
       setText("");
       setTyping(true);
+
       try {
-        const reply = await sendChat(nextMessages, t("noVitals"));
-        setMessages((current) => [...current, { role: "assistant", content: reply }]);
+        const reply = await sendChat(next, t("noVitals"));
+        setMessages((cur) => [...cur, { role: "assistant", content: reply }]);
       } catch {
-        setMessages((current) => [...current, { role: "assistant", content: t("aiError") }]);
+        setMessages((cur) => [...cur, { role: "assistant", content: t("aiError") }]);
       } finally {
         setTyping(false);
       }
@@ -145,212 +176,216 @@ export function ChatScreen(): React.JSX.Element {
     [messages, text, t],
   );
 
-  const suggestionW = Math.max(110, (screenW - 56) / 3);
+  const scrollToEnd = useCallback(() => {
+    listRef.current?.scrollToEnd({ animated: true });
+  }, []);
 
-  const renderMessage = ({ item, index }: { item: ChatMessage; index: number }) => {
-    const isUser = item.role === "user";
-    const showQuickReplies = !isUser && index === messages.length - 1 && !typing;
+  const renderMessage = useCallback(
+    ({ item }: { item: ChatMessage }) => (
+      <MessageBubble
+        role={item.role}
+        content={item.content}
+        isRTL={isRTL}
+        colors={colors}
+      />
+    ),
+    [isRTL, colors],
+  );
 
-    return (
-      <AnimatedMessage>
-        <View style={{ marginBottom: 16 }}>
-          <View style={[st.messageRow, isRTL ? st.rowReverse : st.row, !isUser && st.assistantRow]}>
-            {!isUser && (
-              <View style={[st.avatarSmall, { backgroundColor: C.primarySoft }]}>
-                <Image source={{ uri: "https://cdn-icons-png.flaticon.com/512/4712/4712035.png" }} style={st.avatarSmallImg} />
-              </View>
-            )}
-            <View
-              style={[
-                st.bubble,
-                isUser
-                  ? [st.userBubble, { backgroundColor: C.userBubble }]
-                  : [st.assistantBubble, { backgroundColor: C.assistantBubble, borderColor: C.assistantBorder }],
-                isRTL && isUser ? { borderTopRightRadius: 4 }
-                  : isRTL && !isUser ? { borderTopLeftRadius: 4 }
-                  : isUser ? { borderTopRightRadius: 4 }
-                  : { borderTopLeftRadius: 4 },
-              ]}
-            >
-              <AppText style={[st.bubbleText, isUser ? st.userText : { color: C.text }]}>
-                {item.content}
-              </AppText>
-            </View>
-          </View>
+  const cardW = Math.max(96, (screenW - 52) / 3.4);
 
-          {showQuickReplies && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[st.quickReplies, isRTL && st.rowReverse]}>
-              {quickReplies.map((reply) => (
-                <TouchableOpacity key={reply} activeOpacity={0.7} onPress={() => handleSend(reply)}
-                  style={[st.quickReplyBtn, { backgroundColor: C.primarySoft, borderColor: C.primary + "30" }]}>
-                  <AppText style={[st.quickReplyText, { color: C.primary }]}>{reply}</AppText>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-        </View>
-      </AnimatedMessage>
-    );
-  };
-
+  // ──────────────────────────────────────────────────────────────────────────
   return (
-    <Screen style={{ backgroundColor: C.bg }}>
+    <Screen style={{ backgroundColor: colors.background }}>
       <KeyboardAvoidingView
+        style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={st.flex}
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
-        {/* ── Header ── */}
-        <View style={[st.header, { backgroundColor: C.surface, borderBottomColor: C.cardBorder }, isRTL && st.rowReverse]}>
-          <View style={[st.headerLeft, isRTL && st.rowReverse]}>
-            <View style={[st.avatarLarge, { borderColor: C.primary + "40" }]}>
-              <View style={[st.avatarLargeInner, { backgroundColor: C.primarySoft }]}>
-                <Image source={{ uri: "https://cdn-icons-png.flaticon.com/512/4712/4712035.png" }} style={st.avatarLargeImg} />
-              </View>
-            </View>
-            <View style={st.headerText}>
-              <AppText style={[st.headerTitle, { color: C.text }, isRTL && st.textRight]}>{t("healthAssistant")}</AppText>
-              <View style={[st.statusRow, isRTL && st.rowReverse]}>
-                <View style={[st.statusDot, { backgroundColor: C.success }]} />
-                <AppText style={[st.statusLabel, { color: C.success }]}>{t("availableNow")}</AppText>
-              </View>
-            </View>
-          </View>
-        </View>
+        {/* 1 ── Header */}
+        <ChatHeader
+          title={t("healthAssistant")}
+          statusLabel={t("availableNow")}
+          isRTL={isRTL}
+          colors={colors}
+        />
 
-        {/* ── Suggestions (empty state) ── */}
+        {/* 2 ── Empty-state suggestions */}
         {messages.length === 0 && (
-          <>
-            <View style={[st.suggestionsHeader, isRTL && st.rowReverse]}>
-              <AppText style={[st.suggestionsTitle, { color: C.text }]}>{t("quickSuggestions")}</AppText>
-              <TouchableOpacity activeOpacity={0.7}>
-                <AppText style={[st.seeAll, { color: C.primary }]}>{t("showAll")}</AppText>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[st.suggestions, isRTL && st.rowReverse]}>
-              {suggestions.map((s, idx) => (
-                <TouchableOpacity key={idx} activeOpacity={0.7} onPress={() => handleSend(s.label)}
-                  style={[st.suggestionCard, { width: suggestionW, backgroundColor: s.color + "0D", borderColor: s.color + "20" }]}>
-                  <View style={[st.suggestionIcon, { backgroundColor: s.color + "18" }]}>
-                    <Ionicons name={s.icon as any} size={22} color={s.color} />
-                  </View>
-                  <AppText style={[st.suggestionText, { color: C.text }]} numberOfLines={2}>{s.label}</AppText>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </>
+          <SuggestionsRow
+            suggestions={SUGGESTIONS}
+            onSelect={handleSend}
+            title={t("quickSuggestions")}
+            isRTL={isRTL}
+            colors={colors}
+            cardWidth={cardW}
+          />
         )}
 
-        {/* ── Messages ── */}
+        {/* 3 ── Messages */}
         <FlatList
-          ref={flatListRef}
+          ref={listRef}
           data={messages}
-          keyExtractor={(_, index) => String(index)}
-          contentContainerStyle={st.messagesList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          keyExtractor={(_, i) => String(i)}
           renderItem={renderMessage}
+          onContentSizeChange={scrollToEnd}
+          onLayout={scrollToEnd}
+          removeClippedSubviews={Platform.OS === "android"}
+          contentContainerStyle={[
+            styles.list,
+            {
+              paddingBottom:
+                bottomOffset + COMPOSER_H + QUICK_REPLIES_H + 16,
+            },
+          ]}
           ListEmptyComponent={
-            <View style={st.emptyChat}>
-              <View style={[st.emptyIcon, { backgroundColor: C.primarySoft }]}>
-                <Ionicons name="chatbubbles-outline" size={36} color={C.primary} />
+            <View style={styles.empty}>
+              <View style={[styles.emptyIcon, { backgroundColor: colors.primarySoft }]}>
+                <Ionicons name="chatbubbles-outline" size={30} color={colors.primary} />
               </View>
-              <AppText style={[st.emptyTitle, { color: C.text }]}>{t("startChat")}</AppText>
-              <AppText style={[st.emptySubtext, { color: C.textMuted }]}>{t("howCanIHelp")}</AppText>
+              <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
+                {t("startChat")}
+              </Text>
+              <Text style={[styles.emptySub, { color: colors.textSecondary }]}>
+                {t("howCanIHelp")}
+              </Text>
             </View>
           }
         />
 
-        {/* ── Typing Indicator ── */}
+        {/* 4 ── Typing indicator */}
         {typing && (
-          <View style={[st.typingRow, isRTL && st.rowReverse]}>
-            <View style={[st.typingAvatar, { backgroundColor: C.primarySoft }]}>
-              <Image source={{ uri: "https://cdn-icons-png.flaticon.com/512/4712/4712035.png" }} style={st.typingAvatarImg} />
-            </View>
-            <View style={[st.typingBubble, { backgroundColor: C.assistantBubble, borderColor: C.assistantBorder }]}>
-              <TypingDots color={C.primary} />
-              <AppText style={[st.typingText, { color: C.textMuted }]}>{t("rafeeqTyping")}</AppText>
-            </View>
-          </View>
+          <TypingBubble
+            isRTL={isRTL}
+            colors={colors}
+            label={t("rafeeqTyping")}
+          />
         )}
 
-        {/* ── Input Composer ── */}
-        <View style={[st.inputBar, { backgroundColor: C.surface, borderTopColor: C.cardBorder }, isRTL && st.rowReverse]}>
-          <View style={st.inputWrap}>
-            <AppInput
-              value={text}
-              onChangeText={setText}
-              placeholder={t("typeMessage")}
-              placeholderTextColor={C.textMuted}
-            />
-          </View>
-          <SendButton onPress={() => handleSend()} disabled={!text.trim()} isRTL={isRTL} />
+        {/* 5 ── Quick replies (above composer) */}
+        {showQuickReplies && (
+          <QuickReplies
+            data={QUICK_REPLIES}
+            onSelect={handleSend}
+            isRTL={isRTL}
+            colors={colors}
+          />
+        )}
+
+        {/* 6 ── Input composer */}
+        <View
+          style={[
+            styles.composer,
+            {
+              marginBottom: bottomOffset + 8,
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+            },
+            isRTL && styles.rowRev,
+          ]}
+        >
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            placeholder={t("typeMessage")}
+            placeholderTextColor={colors.textSecondary}
+            returnKeyType="send"
+            onSubmitEditing={() => handleSend()}
+            blurOnSubmit={false}
+            multiline
+            style={[
+              styles.input,
+              {
+                color: colors.textPrimary,
+                textAlign: isRTL ? "right" : "left",
+              },
+            ]}
+          />
+          <SendButton
+            onPress={() => handleSend()}
+            disabled={!text.trim()}
+            isRTL={isRTL}
+            color={colors.primary}
+          />
         </View>
       </KeyboardAvoidingView>
     </Screen>
   );
 }
 
-/* ────────── STYLES ────────── */
-const st = StyleSheet.create({
+// ─── Styles (8pt system) ─────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
   flex: { flex: 1 },
-  rowReverse: { flexDirection: "row-reverse" },
-  row: { flexDirection: "row" },
-  textRight: { textAlign: "right" },
+  rowRev: { flexDirection: "row-reverse" },
 
-  /* Header */
-  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12, borderBottomWidth: 1 },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
-  avatarLarge: { width: 48, height: 48, borderRadius: 16, borderWidth: 2, alignItems: "center", justifyContent: "center" },
-  avatarLargeInner: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center" },
-  avatarLargeImg: { width: 30, height: 30, resizeMode: "contain" },
-  headerText: { flex: 1, gap: 3 },
-  headerTitle: { fontSize: 18, fontWeight: "700" },
-  statusRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusLabel: { fontSize: 11, fontWeight: "600" },
+  /* FlatList */
+  list: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    flexGrow: 1,
+  },
 
-  /* Suggestions */
-  suggestionsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, marginTop: 8, marginBottom: 12 },
-  suggestionsTitle: { fontSize: 15, fontWeight: "700" },
-  seeAll: { fontSize: 13, fontWeight: "600" },
-  suggestions: { paddingHorizontal: 16, gap: 10, paddingBottom: 8 },
-  suggestionCard: { borderRadius: radius.lg, padding: 14, alignItems: "center", gap: 10, borderWidth: 1 },
-  suggestionIcon: { width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
-  suggestionText: { fontSize: 12, fontWeight: "600", textAlign: "center", lineHeight: 18 },
+  /* Empty state */
+  empty: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 48,
+    gap: 12,
+  },
+  emptyIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  emptySub: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
 
-  /* Messages */
-  messagesList: { padding: 16, paddingBottom: 8, flexGrow: 1 },
-  emptyChat: { alignItems: "center", justifyContent: "center", paddingVertical: 56, gap: 14 },
-  emptyIcon: { width: 72, height: 72, borderRadius: radius.xl, alignItems: "center", justifyContent: "center", marginBottom: 4 },
-  emptyTitle: { fontSize: 17, fontWeight: "700" },
-  emptySubtext: { fontSize: 14, fontWeight: "500" },
+  /* Composer — pill, 90% wide, centered */
+  composer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    width: "90%",
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    minHeight: COMPOSER_H,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
+      },
+      android: { elevation: 4 },
+    }),
+  },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "500",
+    paddingVertical: 0,
+    maxHeight: 100,
+    letterSpacing: 0.1,
+  },
 
-  messageRow: { alignItems: "flex-end", gap: 8 },
-  assistantRow: { alignItems: "flex-start" },
-  avatarSmall: { width: 30, height: 30, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  avatarSmallImg: { width: 22, height: 22, resizeMode: "contain" },
-  bubble: { maxWidth: "78%", paddingHorizontal: 16, paddingVertical: 12, borderRadius: 22 },
-  userBubble: { borderTopRightRadius: 4 },
-  assistantBubble: { borderTopLeftRadius: 4, borderWidth: 1 },
-  bubbleText: { fontSize: 15, lineHeight: 23 },
-  userText: { color: "#fff", fontWeight: "500" },
-
-  /* Quick Replies */
-  quickReplies: { paddingHorizontal: 48, paddingTop: 10, gap: 8 },
-  quickReplyBtn: { borderRadius: radius.full, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 9 },
-  quickReplyText: { fontSize: 13, fontWeight: "600" },
-
-  /* Typing */
-  typingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, marginBottom: 8 },
-  typingAvatar: { width: 26, height: 26, borderRadius: 9, alignItems: "center", justifyContent: "center" },
-  typingAvatarImg: { width: 18, height: 18, resizeMode: "contain" },
-  typingBubble: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 16, borderWidth: 1 },
-  typingText: { fontSize: 12, fontWeight: "600" },
-
-  /* Input Composer */
-  inputBar: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1 },
-  inputWrap: { flex: 1 },
-  sendBtn: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", shadowColor: "#00C2FF", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6 },
+  /* Send button — circular */
+  sendBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

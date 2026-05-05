@@ -45,11 +45,11 @@ export function AppInput({
   const { colors, darkMode, isRTL } = useTheme();
 
   const fieldBg = darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)';
-  const fieldBorder = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
-  const focusBorder = '#00C2FF';
-  const focusBg = darkMode ? 'rgba(0,194,255,0.05)' : 'rgba(0,194,255,0.03)';
-  const labelColor = darkMode ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.55)';
-  const placeholderColor = darkMode ? 'rgba(255,255,255,0.30)' : 'rgba(0,0,0,0.28)';
+  const fieldBorder = colors.border;
+  const focusBorder = colors.primary;
+  const focusBg = colors.primarySoft;
+  const labelColor = colors.textSecondary;
+  const placeholderColor = colors.textSecondary + '80';
   const textAlign = isRTL ? 'right' as const : 'left' as const;
 
   const handleFocus = () => {
@@ -98,7 +98,7 @@ export function AppInput({
           textContentType={textContentType}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          selectionColor="#00C2FF"
+          selectionColor={colors.primary}
           textAlign={textAlign}
           {...rest}
         />

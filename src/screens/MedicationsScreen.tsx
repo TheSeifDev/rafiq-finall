@@ -19,7 +19,6 @@ import { useAppStore } from '../store/app.store';
 import { medicationService, type Medication } from '../services/medication.service';
 import { patientService } from '../services/patient.service';
 import { translations } from '../constants/translations';
-import type { ProfileStackScreenProps } from '../navigation/types';
 import { MedicationDashboardRow, type MedicationDashboardStat } from '../components/medications/MedicationDashboardRow';
 import { MedicationExpandableCard } from '../components/medications/MedicationExpandableCard';
 import { MedicationSearchBar } from '../components/medications/MedicationSearchBar';
@@ -30,7 +29,10 @@ import { MedicationFormSheet } from '../components/medications/MedicationFormShe
 import { syncMedicationReminders, syncSingleMedicationNotifications, computeMissedDosesForToday } from '../lib/notifications/medicationReminders';
 import { cancelAllRemindersForMedication } from '../lib/notifications/notificationService';
 
-type Props = ProfileStackScreenProps<'Medications'>;
+// MedicationsScreen is used as both a main tab and inside ProfileStack.
+// Flexible navigation type avoids prop conflicts in both contexts.
+type Props = { navigation: any };
+
 
 export function MedicationsScreen({ navigation }: Props): React.JSX.Element {
   const session = useAuthStore((s) => s.session);
@@ -69,8 +71,9 @@ export function MedicationsScreen({ navigation }: Props): React.JSX.Element {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyItems, setHistoryItems] = useState<Array<{ taken_at: string; skipped: boolean; note: string | null }>>([]);
 
-  const surfaceBg = darkMode ? 'rgba(30, 41, 59, 0.80)' : 'rgba(255, 255, 255, 0.92)';
-  const cardBorder = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
+  // Use theme tokens — no hardcoded colors
+  const surfaceBg = colors.surface;
+  const cardBorder = colors.border;
 
   const load = useCallback(async () => {
     if (!session?.user.id) return;
@@ -277,13 +280,15 @@ export function MedicationsScreen({ navigation }: Props): React.JSX.Element {
   const header = (
     <View style={styles.headerWrap}>
       <View style={[styles.topBar, isRTL && styles.rowRTL]}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-          style={[styles.iconBtn, { backgroundColor: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}
-        >
-          <Ionicons name={isRTL ? 'chevron-forward' : 'chevron-back'} size={20} color={colors.textPrimary} />
-        </TouchableOpacity>
+        {navigation.canGoBack?.() && (
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.7}
+            style={[styles.iconBtn, { backgroundColor: colors.surfaceVariant }]}
+          >
+            <Ionicons name={isRTL ? 'chevron-forward' : 'chevron-back'} size={20} color={colors.textPrimary} />
+          </TouchableOpacity>
+        )}
 
         <View style={styles.titleWrap}>
           <AppText style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>

@@ -40,10 +40,13 @@ const DEVICE_ICONS: Record<DeviceType, string> = {
   gas: "flame-outline",
   motion: "radio-outline",
 };
+// Device colors are kept as raw values here since they're semantic brand colors
+// (watch = blue, gas = amber, motion = purple) — not background/surface colors.
+// These intentionally differ from the main theme's primary color.
 const DEVICE_COLORS: Record<DeviceType, string> = {
-  watch: "#00C2FF",
-  gas: "#F59E0B",
-  motion: "#8B5CF6",
+  watch: '#00C2FF',
+  gas: '#F59E0B',
+  motion: '#8B5CF6',
 };
 const TYPE_OPTIONS: { key: DeviceType; labelAr: string; labelEn: string }[] = [
   { key: "watch", labelAr: "ساعة ذكية", labelEn: "Smart Watch" },
@@ -64,22 +67,19 @@ function timeAgo(iso: string, isAr: boolean): string {
 function SectionCard({
   title,
   children,
-  darkMode,
   colors,
 }: {
   title: string;
   children: React.ReactNode;
-  darkMode: boolean;
+  darkMode?: boolean;
   colors: any;
 }) {
-  const bg = darkMode ? "rgba(26, 35, 50, 0.85)" : "rgba(255, 255, 255, 0.92)";
-  const border = darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)";
   return (
     <View style={st.sectionWrap}>
       <AppText style={[st.sectionLabel, { color: colors.textSecondary }]}>
         {title}
       </AppText>
-      <View style={[st.sectionCard, { backgroundColor: bg, borderColor: border }]}>
+      <View style={[st.sectionCard, { backgroundColor: colors.surfaceVariant, borderColor: colors.border }]}>
         {children}
       </View>
     </View>
@@ -96,7 +96,6 @@ function SettingsRow({
   showChevron = true,
   isDestructive = false,
   isLast = false,
-  darkMode,
   colors,
 }: {
   icon: string;
@@ -107,15 +106,14 @@ function SettingsRow({
   showChevron?: boolean;
   isDestructive?: boolean;
   isLast?: boolean;
-  darkMode: boolean;
+  darkMode?: boolean;
   colors: any;
 }) {
-  const divider = darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)";
   const textColor = isDestructive ? colors.danger : colors.textPrimary;
   const resolvedIcon = isDestructive ? colors.danger : (iconColor ?? colors.primary);
 
   const content = (
-    <View style={[st.row, !isLast && { borderBottomWidth: 1, borderBottomColor: divider }]}>
+    <View style={[st.row, !isLast && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
       <View style={[st.rowIconWrap, { backgroundColor: resolvedIcon + "12" }]}>
         <Ionicons name={icon as any} size={18} color={resolvedIcon} />
       </View>
@@ -374,11 +372,11 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
       {/* ═══ ADD DEVICE MODAL ═══ */}
       <Modal visible={showAddModal} transparent animationType="fade" onRequestClose={() => setShowAddModal(false)}>
         <Pressable style={st.modalOverlay} onPress={() => setShowAddModal(false)}>
-          <Pressable style={[st.modalCard, { backgroundColor: darkMode ? "#111827" : "#fff" }]} onPress={() => {}}>
+          <Pressable style={[st.modalCard, { backgroundColor: colors.surface }]} onPress={() => {}}>
             <AppText style={[st.modalTitle, { color: colors.textPrimary }]}>{isAr ? "إضافة جهاز" : "Add Device"}</AppText>
             <TextInput value={addName} onChangeText={setAddName} placeholder={isAr ? "اسم الجهاز" : "Device name"}
               placeholderTextColor={colors.textSecondary}
-              style={[st.modalInput, { color: colors.textPrimary, borderColor: colors.textSecondary + "30", backgroundColor: darkMode ? "rgba(255,255,255,0.05)" : "#F5F7FA" }]} />
+              style={[st.modalInput, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surfaceVariant }]} />
             <AppText style={[st.modalSubLabel, { color: colors.textSecondary }]}>{isAr ? "نوع الجهاز" : "Device type"}</AppText>
             <View style={st.typeRow}>
               {TYPE_OPTIONS.map((opt) => (
@@ -406,11 +404,11 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
       {/* ═══ RENAME MODAL ═══ */}
       <Modal visible={renameTarget !== null} transparent animationType="fade" onRequestClose={() => setRenameTarget(null)}>
         <Pressable style={st.modalOverlay} onPress={() => setRenameTarget(null)}>
-          <Pressable style={[st.modalCard, { backgroundColor: darkMode ? "#111827" : "#fff" }]} onPress={() => {}}>
+          <Pressable style={[st.modalCard, { backgroundColor: colors.surface }]} onPress={() => {}}>
             <AppText style={[st.modalTitle, { color: colors.textPrimary }]}>{isAr ? "إعادة تسمية" : "Rename Device"}</AppText>
             <TextInput value={renameTxt} onChangeText={setRenameTxt} placeholder={isAr ? "الاسم الجديد" : "New name"}
               placeholderTextColor={colors.textSecondary} autoFocus
-              style={[st.modalInput, { color: colors.textPrimary, borderColor: colors.textSecondary + "30", backgroundColor: darkMode ? "rgba(255,255,255,0.05)" : "#F5F7FA" }]} />
+              style={[st.modalInput, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surfaceVariant }]} />
             <View style={st.modalBtnRow}>
               <TouchableOpacity onPress={() => setRenameTarget(null)} style={[st.modalBtn, { backgroundColor: colors.textSecondary + "15" }]}>
                 <AppText style={{ color: colors.textSecondary, fontWeight: "700", fontSize: 14 }}>{t.cancel}</AppText>

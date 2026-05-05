@@ -1,100 +1,105 @@
-import React from 'react';
-import { View, Pressable, StyleSheet, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { AppText } from './AppText';
-import { useTheme } from '../../theme/useTheme';
-import { useAppStore } from '../../store/app.store';
-import { translations } from '../../constants/translations';
-import { spacing } from '../../theme';
+import React from "react";
+import { View, Pressable, StyleSheet, Platform } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { AppText } from "./AppText";
+import { useTheme } from "../../theme/useTheme";
+import { useAppStore } from "../../store/app.store";
+import { translations } from "../../constants/translations";
 
-const TAB_ICONS: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
-  Home: { active: 'home', inactive: 'home-outline' },
-  Vitals: { active: 'heart', inactive: 'heart-outline' },
-  Emergency: { active: 'shield-checkmark', inactive: 'shield-checkmark-outline' },
-  Chat: { active: 'chatbubbles', inactive: 'chatbubbles-outline' },
-  Profile: { active: 'person-circle', inactive: 'person-circle-outline' },
+const TABS: Record<
+  string,
+  {
+    active: keyof typeof Ionicons.glyphMap;
+    inactive: keyof typeof Ionicons.glyphMap;
+    labelKey: keyof (typeof translations)["en"];
+  }
+> = {
+  Home: { active: "home", inactive: "home-outline", labelKey: "home" },
+  Vitals: { active: "pulse", inactive: "pulse-outline", labelKey: "vitals" },
+  Medications: {
+    active: "medical",
+    inactive: "medical-outline",
+    labelKey: "medications",
+  },
+  Chat: {
+    active: "chatbubbles",
+    inactive: "chatbubbles-outline",
+    labelKey: "chat",
+  },
+  Profile: {
+    active: "person-circle",
+    inactive: "person-circle-outline",
+    labelKey: "profile",
+  },
 };
 
-const TAB_KEYS: Record<string, keyof typeof translations['en']> = {
-  Home: 'home',
-  Vitals: 'vitals',
-  Emergency: 'emergency',
-  Chat: 'chat',
-  Profile: 'profile',
-};
-
-export function BottomTabBar({ state, navigation }: BottomTabBarProps): React.JSX.Element {
-  const { colors, darkMode } = useTheme();
+export function BottomTabBar({
+  state,
+  navigation,
+}: BottomTabBarProps): React.JSX.Element {
+  const { colors } = useTheme();
   const language = useAppStore((s) => s.language);
   const t = translations[language];
 
-  const tabBg = darkMode
-    ? 'rgba(10, 15, 28, 0.97)'
-    : 'rgba(255, 255, 255, 0.98)';
-  const borderColor = darkMode
-    ? 'rgba(255, 255, 255, 0.06)'
-    : 'rgba(0, 0, 0, 0.06)';
-
   return (
-    <View style={[styles.container, { backgroundColor: tabBg, borderTopColor: borderColor }]}>
-      <View style={styles.inner}>
+    <View
+      style={[
+        styles.wrapper,
+        { paddingBottom: Platform.OS === "ios" ? 28 : 12 },
+      ]}
+    >
+      <View
+        style={[
+          styles.bar,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
-          const icons = TAB_ICONS[route.name] ?? { active: 'ellipse', inactive: 'ellipse-outline' };
-          const iconName = isFocused ? icons.active : icons.inactive;
-          const labelKey = TAB_KEYS[route.name];
-          const label = labelKey ? (t as any)[labelKey] : route.name;
+          const tab = TABS[route.name];
+          if (!tab) return null;
 
-          const isEmergency = route.name === 'Emergency';
-          const activeColor = isEmergency ? '#FF3B3B' : '#00C2FF';
+          const label = (t as any)[tab.labelKey] ?? route.name;
 
           return (
             <Pressable
               key={route.key}
               onPress={() => {
-                if (!isFocused) {
-                  navigation.navigate(route.name);
-                }
+                if (!isFocused) navigation.navigate(route.name);
               }}
-              style={({ pressed }) => [
-                styles.tab,
-                pressed && styles.tabPressed,
-              ]}
-              android_ripple={{ color: activeColor + '20', borderless: true }}
+              style={styles.tab}
+              android_ripple={{ color: colors.primarySoft, borderless: true }}
             >
-              {isEmergency ? (
-                <View style={[styles.emergencyCircle, { backgroundColor: '#FF3B3B15' }]}>
-                  <Ionicons
-                    name={iconName}
-                    size={22}
-                    color={isFocused ? '#FF3B3B' : colors.textSecondary}
-                  />
-                </View>
-              ) : (
-                <Ionicons
-                  name={iconName}
-                  size={22}
-                  color={isFocused ? '#00C2FF' : colors.textSecondary}
+              {/* Active pill highlight - FIXED: zIndex behind content */}
+              {isFocused && (
+                <View
+                  style={[
+                    styles.activePill,
+                    { backgroundColor: colors.primarySoft },
+                  ]}
                 />
               )}
-              <AppText
-                style={[
-                  styles.label,
-                  {
-                    color: isEmergency
-                      ? (isFocused ? '#FF3B3B' : colors.textSecondary)
-                      : (isFocused ? '#00C2FF' : colors.textSecondary),
-                    fontWeight: isFocused ? '700' : '500',
-                  },
-                ]}
-              >
-                {label}
-              </AppText>
-              {/* Active indicator bar */}
-              {isFocused && !isEmergency && (
-                <View style={[styles.activeBar, { backgroundColor: '#00C2FF' }]} />
-              )}
+
+              {/* Content wrapper with zIndex above pill */}
+              <View style={styles.tabContent}>
+                <Ionicons
+                  name={isFocused ? tab.active : tab.inactive}
+                  size={22}
+                  color={isFocused ? colors.primary : colors.textSecondary}
+                />
+                <AppText
+                  style={[
+                    styles.label,
+                    {
+                      color: isFocused ? colors.primary : colors.textSecondary,
+                      fontWeight: isFocused ? "700" : "500",
+                    },
+                  ]}
+                >
+                  {label}
+                </AppText>
+              </View>
             </Pressable>
           );
         })}
@@ -104,41 +109,59 @@ export function BottomTabBar({ state, navigation }: BottomTabBarProps): React.JS
 }
 
 const styles = StyleSheet.create({
-  container: {
-    borderTopWidth: 1,
-    paddingBottom: Platform.OS === 'ios' ? 22 : 10,
+  wrapper: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
     paddingTop: 8,
+    backgroundColor: "transparent",
+    zIndex: 10, // Keep above screen content
+    pointerEvents: "box-none", // Let touches pass through transparent areas
   },
-  inner: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.sm,
+  bar: {
+    flexDirection: "row",
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 12,
+    backgroundColor: "transparent",
+    pointerEvents: "auto", // Re-enable touches on the bar itself
   },
   tab: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-    gap: 3,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    position: "relative",
+    overflow: "hidden", // Prevent pill from bleeding
+    borderRadius: 16, // Match pill radius for clean clip
   },
-  tabPressed: {
-    opacity: 0.7,
+  tabContent: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    zIndex: 2, // Above the pill
+  },
+  activePill: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    width: 48,
+    height: 48,
+    marginTop: -24, // Center vertically
+    marginLeft: -24, // Center horizontally
+    borderRadius: 14,
+    zIndex: 1, // Behind content
   },
   label: {
-    fontSize: 11,
+    fontSize: 10,
     letterSpacing: 0.2,
-  },
-  emergencyCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: -2,
-  },
-  activeBar: {
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    marginTop: 3,
   },
 });
