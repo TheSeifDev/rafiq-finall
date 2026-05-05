@@ -55,17 +55,22 @@ export async function sendChat(
   // ── Network / invocation error ───────────────────────────────────────────
   if (error) {
     if (__DEV__) {
-      console.error("[chat.service] invoke error:", error.message, error);
+      console.error("[chat.service] invoke error:", error.message, "status:", (error as { status?: number }).status);
     }
 
-    // FunctionsHttpError carries the HTTP status
     const status = (error as { status?: number }).status;
 
+    // Try to read the Arabic reply from the edge function body first.
+    // FunctionsHttpError exposes the parsed body via .context on some versions.
+    const bodyReply = (error as { context?: { reply?: string } }).context?.reply;
+    if (bodyReply) return bodyReply;
+
+    // Fallback to status-mapped Arabic strings
+    if (status === 429) return "الخدمة مشغولة حالياً، حاول بعد قليل.";
     if (status === 401) return "غير مصرح بالوصول. تحقق من إعدادات التطبيق.";
-    if (status === 429) return "تم تجاوز الحد المسموح به. انتظر قليلاً وحاول مجدداً.";
+    if (status === 500) return "حدث خطأ في الخادم. حاول مجدداً لاحقاً.";
     if (status === 503 || status === 504) return "انتهت مهلة الاتصال. تحقق من اتصالك.";
 
-    // Edge function returned a reply even on error (Arabic message from our handler)
     if (data?.reply) return data.reply;
 
     return "تعذّر الاتصال بالخادم. تحقق من اتصالك بالإنترنت.";

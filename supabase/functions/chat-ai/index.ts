@@ -91,20 +91,31 @@ function buildGeminiBody(
   messages: IncomingMessage[],
   vitals: string,
 ): GeminiRequestBody {
-  const vitalsContext: GeminiContent = {
+  // Trim to last 4 messages — reduces token usage and 429 risk
+  const trimmed = messages.slice(-4);
+
+  console.log("[chat-ai] Message count:", messages.length, "| Trimmed:", trimmed.length);
+
+  // Inject system prompt + vitals as a single combined first user turn
+  const contextTurn: GeminiContent = {
     role: "user",
-    parts: [{ text: `[المؤشرات الحيوية الأخيرة]: ${vitals}` }],
+    parts: [{
+      text: `System: ${SYSTEM_PROMPT}\nVitals: ${vitals}`,
+    }],
   };
 
-  const history: GeminiContent[] = messages.map((m) => ({
+  const history: GeminiContent[] = trimmed.map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
   }));
 
   return {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [vitalsContext, ...history],
-    generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+    contents: [contextTurn, ...history],
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 120,  // reduced: faster responses, fewer 429s
+    },
   };
 }
 
@@ -200,24 +211,30 @@ serve(async (req: Request): Promise<Response> => {
   let data: GeminiResponse;
   try {
     data = (await geminiRes.json()) as GeminiResponse;
-    console.log("[chat-ai] GEMINI RESPONSE:", JSON.stringify({
-      status: geminiRes.status,
+    console.log("[chat-ai] Gemini status:", geminiRes.status, JSON.stringify({
       finishReason: data.candidates?.[0]?.finishReason,
       hasText: !!data.candidates?.[0]?.content?.parts?.[0]?.text,
-      error: data.error ?? null,
+      apiError: data.error ?? null,
     }));
   } catch (e) {
     console.error("[chat-ai] Failed to parse Gemini JSON. HTTP:", geminiRes.status, e);
     return reply("حدث خطأ في الخادم. حاول مجدداً.");
   }
 
-  // Handle Gemini-level errors (still wrapped in a 200 HTTP response for us)
+  // Handle Gemini-level errors — return proper HTTP status codes
   if (!geminiRes.ok) {
     console.error(`[chat-ai] Gemini HTTP ${geminiRes.status}:`, data.error?.message);
-    return reply(
-      geminiRes.status === 429
-        ? "تم تجاوز الحد المسموح به من الطلبات. انتظر قليلاً."
-        : `حدث خطأ في خدمة الذكاء الاصطناعي. (${geminiRes.status})`,
+
+    if (geminiRes.status === 429) {
+      return new Response(
+        JSON.stringify({ reply: "الخدمة مشغولة حالياً، حاول بعد قليل." }),
+        { status: 429, headers: CORS_HEADERS },
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ reply: `حدث خطأ في خدمة الذكاء الاصطناعي. (${geminiRes.status})` }),
+      { status: 500, headers: CORS_HEADERS },
     );
   }
 
