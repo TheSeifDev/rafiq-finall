@@ -14,19 +14,6 @@
   ],
   "exclude": [
     "node_modules",
-    "src/screens/Home",
-    "src/screens/Chat",
-    "src/screens/Emergency",
-    "src/screens/AddPatient",
-    "src/screens/GeneralSettings",
-    "src/screens/AddPatientScreen.tsx",
-    "src/screens/GeneralSettingsScreen.tsx",
-    "src/screens/MedicationScreen.tsx",
-    "src/screens/EmergencyCenter.tsx",
-    "src/screens/NotificationsScreen.tsx",
-    "src/hooks/usePatient.ts",
-    "src/hooks/useNotifications.ts",
-    "src/hooks/useVitals.ts",
-    "src/hooks/useMedications.ts"
+    "supabase"
   ]
 }

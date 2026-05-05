@@ -1,0 +1,19 @@
+{
+  // ─── Deno: enabled ONLY for Supabase Edge Functions ────────────────────────
+  // This prevents Deno from interfering with the main Expo/Node project.
+  "deno.enablePaths": ["supabase/functions"],
+  "deno.unstable": true,
+  "deno.suggest.imports.hosts": {
+    "https://deno.land": true
+  },
+
+  // ─── TypeScript: use project-local tsconfig (Expo) for src/ ────────────────
+  // The functions folder has its own tsconfig — VS Code picks it up automatically
+  // when deno.enablePaths scopes Deno to that directory only.
+  "typescript.tsdk": "node_modules/typescript/lib",
+
+  // ─── Editor: file associations ──────────────────────────────────────────────
+  "files.associations": {
+    "*.ts": "typescript"
+  }
+}
