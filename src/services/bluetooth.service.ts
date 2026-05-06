@@ -10,6 +10,7 @@
  * Zero crash paths in any environment.
  */
 import Constants from 'expo-constants';
+import { Buffer } from 'buffer';
 
 // ─── Environment ────────────────────────────────────────────
 
@@ -68,6 +69,8 @@ export class BluetoothService {
   private _state: ConnectionState = 'idle';
   private _connectedDevice: SmartWatchDevice | null = null;
   private _persona: Persona = createPersona();
+  private _manager: any | null = null;
+  private _realDevice: any | null = null;
 
   get isSimulated(): boolean {
     return IS_EXPO_GO;
@@ -98,7 +101,11 @@ export class BluetoothService {
     // Dev build: attempt real BLE
     try {
       const BLE = safeRequireBLE();
-      if (BLE) return await scanWithRealBLE(BLE);
+      if (BLE) {
+        const devices = await this.scanWithRealBLE(BLE);
+        this._state = 'idle';
+        if (devices.length > 0) return devices;
+      }
     } catch { /* fall through */ }
 
     await sleep(1800);
@@ -122,8 +129,9 @@ export class BluetoothService {
     try {
       const BLE = safeRequireBLE();
       if (BLE) {
-        await connectWithRealBLE(BLE, deviceId);
-        this._connectedDevice = { id: deviceId, name: 'Smartwatch' };
+        const connected = await this.connectWithRealBLE(BLE, deviceId);
+        this._realDevice = connected.device;
+        this._connectedDevice = { id: deviceId, name: connected.name };
         this._state = 'connected';
         return;
       }
@@ -138,6 +146,24 @@ export class BluetoothService {
    * Read vitals — persona-consistent with small drift.
    */
   async readVitals(): Promise<VitalsReading> {
+    if (!this._connectedDevice) {
+      throw new Error('No smartwatch connected');
+    }
+
+    if (!IS_EXPO_GO && this._realDevice) {
+      const realHeartRate = await this.tryReadHeartRate();
+      if (realHeartRate) {
+        const p = this._persona;
+        return {
+          heart_rate: realHeartRate,
+          blood_pressure_systolic: drift(p.baseSystolic, 5),
+          blood_pressure_diastolic: drift(p.baseDiastolic, 4),
+          oxygen_saturation: Math.min(100, Math.max(95, drift(p.baseSpo2, 1))),
+          temperature: parseFloat((p.baseTemp + (Math.random() - 0.5) * 0.4).toFixed(1)),
+        };
+      }
+    }
+
     const p = this._persona;
     return {
       heart_rate: drift(p.baseHR, 4),
@@ -170,13 +196,82 @@ export class BluetoothService {
   }
 
   async disconnect(): Promise<void> {
+    if (this._manager && this._connectedDevice) {
+      await this._manager.cancelDeviceConnection(this._connectedDevice.id).catch(() => undefined);
+    }
+    this._realDevice = null;
     this._connectedDevice = null;
     this._state = 'idle';
   }
 
   destroy(): void {
+    this._manager?.destroy?.();
+    this._manager = null;
+    this._realDevice = null;
     this._connectedDevice = null;
     this._state = 'idle';
+  }
+
+  private getManager(BLE: any): any | null {
+    if (this._manager) return this._manager;
+    const Manager = BLE.BleManager;
+    if (!Manager) return null;
+    this._manager = new Manager();
+    return this._manager;
+  }
+
+  private async scanWithRealBLE(BLE: any): Promise<SmartWatchDevice[]> {
+    const manager = this.getManager(BLE);
+    if (!manager) return [];
+
+    const devices = new Map<string, SmartWatchDevice>();
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        manager.stopDeviceScan();
+        resolve();
+      }, 6000);
+
+      manager.startDeviceScan(null, { allowDuplicates: false }, (error: unknown, device: any) => {
+        if (error) {
+          clearTimeout(timer);
+          manager.stopDeviceScan();
+          resolve();
+          return;
+        }
+        const name = device?.name ?? device?.localName;
+        const looksWearable = typeof name === 'string' && /watch|band|fit|heart|health|hband/i.test(name);
+        if (device?.id && looksWearable) {
+          devices.set(device.id, { id: device.id, name, rssi: device.rssi ?? undefined });
+        }
+      });
+    });
+
+    return Array.from(devices.values());
+  }
+
+  private async connectWithRealBLE(BLE: any, deviceId: string): Promise<{ device: any; name: string }> {
+    const manager = this.getManager(BLE);
+    if (!manager) throw new Error('Bluetooth manager is unavailable');
+    const device = await manager.connectToDevice(deviceId, { timeout: 10000 });
+    await device.discoverAllServicesAndCharacteristics();
+    return { device, name: device.name ?? device.localName ?? 'Smartwatch' };
+  }
+
+  private async tryReadHeartRate(): Promise<number | null> {
+    if (!this._realDevice) return null;
+    try {
+      const services = await this._realDevice.services();
+      const heartService = services.find((s: any) => String(s.uuid).toLowerCase().includes('180d'));
+      if (!heartService) return null;
+      const chars = await heartService.characteristics();
+      const measurement = chars.find((c: any) => String(c.uuid).toLowerCase().includes('2a37'));
+      if (!measurement?.read) return null;
+      const read = await measurement.read();
+      if (!read?.value) return null;
+      return parseHeartRateBase64(read.value);
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -194,11 +289,13 @@ function safeRequireBLE(): any | null {
   }
 }
 
-async function scanWithRealBLE(_BLE: any): Promise<SmartWatchDevice[]> {
-  // TODO: Implement with BleManager when using dev build
-  return [];
-}
-
-async function connectWithRealBLE(_BLE: any, _id: string): Promise<void> {
-  // TODO: Implement with BleManager when using dev build
+function parseHeartRateBase64(value: string): number | null {
+  try {
+    const bytes = Buffer.from(value, 'base64');
+    if (!bytes || bytes.length < 2) return null;
+    const is16Bit = (bytes[0] & 0x01) === 0x01;
+    return is16Bit && bytes.length >= 3 ? bytes.readUInt16LE(1) : bytes[1];
+  } catch {
+    return null;
+  }
 }

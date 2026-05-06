@@ -116,6 +116,7 @@ export function MedicationsScreen({ navigation }: Props): React.JSX.Element {
         enabled: Boolean(notificationPrefs.medicationReminders),
         medications: data,
         language,
+        prefs: notificationPrefs,
       }).catch(() => undefined);
 
       // Stronger missed-dose computation (used to keep dashboard correct if schedule is time-based)
@@ -222,7 +223,7 @@ export function MedicationsScreen({ navigation }: Props): React.JSX.Element {
         setSaving(false);
       }
     },
-    [editing, isAr, load, session?.user.id],
+    [editing, isAr, language, load, session?.user.id],
   );
 
   const handleRefresh = useCallback(async () => {
@@ -336,7 +337,7 @@ export function MedicationsScreen({ navigation }: Props): React.JSX.Element {
         Alert.alert(isAr ? 'تعذر التحديث' : 'Update failed');
       }
     },
-    [load, isAr],
+    [language, load, isAr],
   );
 
   const handleDelete = useCallback(
@@ -549,7 +550,7 @@ export function MedicationsScreen({ navigation }: Props): React.JSX.Element {
             mealRule: isAr ? 'قاعدة الطعام' : 'Meal rule',
             times: isAr ? 'الأوقات' : 'Times',
             addTime: isAr ? 'إضافة وقت' : 'Add time',
-            hhmm: 'HH:MM',
+            hhmm: 'h:mm AM',
           },
           stock: {
             title: isAr ? 'المخزون' : 'Stock',

@@ -298,10 +298,10 @@ export function NotificationCenterScreen(): React.JSX.Element {
     switch (n.category) {
       case 'medication':
       case 'low_stock':
-        navigation.navigate('MainTabs', { screen: 'Profile', params: { screen: 'Medications' } });
+        navigation.navigate('MainTabs', { screen: 'Medications' });
         break;
       case 'emergency':
-        navigation.navigate('MainTabs', { screen: 'Emergency' });
+        navigation.navigate('Emergency');
         break;
       case 'chat':
         navigation.navigate('MainTabs', { screen: 'Chat' });

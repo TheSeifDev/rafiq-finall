@@ -22,9 +22,9 @@ interface GeminiContent {
 }
 
 interface GeminiRequestBody {
-  systemInstruction: { parts: Array<{ text: string }> };
+  system_instruction: { parts: Array<{ text: string }> };
   contents: GeminiContent[];
-  generationConfig: { temperature: number; maxOutputTokens: number };
+  generationConfig: { temperature?: number; maxOutputTokens: number };
 }
 
 interface GeminiResponse {
@@ -37,7 +37,7 @@ interface GeminiResponse {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const TIMEOUT_MS = 15_000;
 
@@ -110,11 +110,10 @@ function buildGeminiBody(
   }));
 
   return {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [contextTurn, ...history],
     generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 120,  // reduced: faster responses, fewer 429s
+      maxOutputTokens: 180,
     },
   };
 }
@@ -188,9 +187,9 @@ serve(async (req: Request): Promise<Response> => {
 
   let geminiRes: Response;
   try {
-    geminiRes = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+    geminiRes = await fetch(GEMINI_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       body: JSON.stringify(geminiBody),
       signal: controller.signal,
     });
@@ -226,8 +225,13 @@ serve(async (req: Request): Promise<Response> => {
     console.error(`[chat-ai] Gemini HTTP ${geminiRes.status}:`, data.error?.message);
 
     if (geminiRes.status === 429) {
+      const retryAfter = geminiRes.headers.get("retry-after");
       return new Response(
-        JSON.stringify({ reply: "الخدمة مشغولة حالياً، حاول بعد قليل." }),
+        JSON.stringify({
+          reply: retryAfter
+            ? `الخدمة مشغولة حالياً. حاول مرة أخرى بعد ${retryAfter} ثانية.`
+            : "الخدمة مشغولة حالياً، حاول بعد قليل.",
+        }),
         { status: 429, headers: CORS_HEADERS },
       );
     }

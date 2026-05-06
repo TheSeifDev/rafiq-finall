@@ -2,23 +2,69 @@ export type ParsedDoseTime =
   | { kind: 'time'; time: string; mealRule?: string | null }
   | { kind: 'label'; label: string };
 
+export type ParsedClockTime = {
+  hour: number;
+  minute: number;
+  period?: 'AM' | 'PM';
+};
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-export function normalizeTime(value: string): string | null {
-  const v = value.trim();
+export function parseClockTime(value: string): ParsedClockTime | null {
+  const v = value.trim().replace(/\s+/g, ' ');
   if (!v) return null;
-  // Accept HH:mm, H:mm, and "08:00 AM" (kept as-is for display only)
-  if (/^\d{1,2}:\d{2}$/.test(v)) {
-    const [hRaw, mRaw] = v.split(':');
-    const h = Number(hRaw);
-    const m = Number(mRaw);
-    if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+  const twelveHour = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(v);
+  if (twelveHour) {
+    const rawHour = Number(twelveHour[1]);
+    const minute = Number(twelveHour[2]);
+    const period = twelveHour[3].toUpperCase() as 'AM' | 'PM';
+    if (!Number.isFinite(rawHour) || !Number.isFinite(minute)) return null;
+    if (rawHour < 1 || rawHour > 12 || minute < 0 || minute > 59) return null;
+    const hour = period === 'AM'
+      ? rawHour === 12 ? 0 : rawHour
+      : rawHour === 12 ? 12 : rawHour + 12;
+    return { hour, minute, period };
   }
-  if (/^\d{1,2}:\d{2}\s?(AM|PM)$/i.test(v)) return v;
+
+  const twentyFourHour = /^(\d{1,2}):(\d{2})$/.exec(v);
+  if (twentyFourHour) {
+    const hour = Number(twentyFourHour[1]);
+    const minute = Number(twentyFourHour[2]);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return { hour, minute };
+  }
+
   return null;
+}
+
+export function normalizeTime(value: string): string | null {
+  const parsed = parseClockTime(value);
+  if (!parsed) return null;
+  return `${String(parsed.hour).padStart(2, '0')}:${String(parsed.minute).padStart(2, '0')}`;
+}
+
+export function formatMedicationTime(value: string, opts?: { use12Hour?: boolean }): string {
+  const parsed = parseClockTime(value);
+  if (!parsed) return value.trim();
+
+  if (opts?.use12Hour === false) {
+    return `${String(parsed.hour).padStart(2, '0')}:${String(parsed.minute).padStart(2, '0')}`;
+  }
+
+  const period = parsed.hour >= 12 ? 'PM' : 'AM';
+  const hour12 = parsed.hour % 12 === 0 ? 12 : parsed.hour % 12;
+  return `${hour12}:${String(parsed.minute).padStart(2, '0')} ${period}`;
+}
+
+export function parseHHMM(time: string): { hour: number; minute: number } | null {
+  const normalized = normalizeTime(time);
+  if (!normalized) return null;
+  const [hourRaw, minuteRaw] = normalized.split(':');
+  return { hour: Number(hourRaw), minute: Number(minuteRaw) };
 }
 
 export function parseMedicationTimes(times: unknown, fallbackTimeOfDay?: string[] | null): ParsedDoseTime[] {
@@ -74,4 +120,3 @@ export function estimateDosesPerDay(opts: {
   const labels = parsedTimes.filter((t) => t.kind === 'label').length;
   return Math.max(1, labels);
 }
-

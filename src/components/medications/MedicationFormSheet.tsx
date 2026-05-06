@@ -19,6 +19,7 @@ import { MedicationScheduleEditor, type ScheduleDraft } from './MedicationSchedu
 import { MedicationStockEditor, type StockDraft } from './MedicationStockEditor';
 import type { Medication } from '../../services/medication.service';
 import { validateMedicationDraft, type MedicationFormDraft, type MedicationFormErrors } from '../../lib/medications/medicationValidation';
+import { formatMedicationTime } from '../../lib/medications/medicationSchedule';
 import type { ThemeColors } from '../../theme';
 
 export type MedicationFormResult = ReturnType<typeof validateMedicationDraft>['normalized'];
@@ -384,6 +385,7 @@ function toDraft(med: Medication | null): MedicationFormDraft {
   const rawTimes = Array.isArray(med?.times) ? (med?.times as any[]) : [];
   const times = rawTimes
     .map((x) => (typeof x === 'string' ? x : typeof x?.time === 'string' ? x.time : ''))
+    .map((x) => formatMedicationTime(x))
     .filter(Boolean);
 
   return {

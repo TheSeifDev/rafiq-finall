@@ -24,6 +24,7 @@ import { medicationService, type Medication } from "../services/medication.servi
 import { notificationService } from "../services/notification.service";
 import { translations } from "../constants/translations";
 import { generateRealisticWeek, buildWeeklyAnalytics } from "../utils/vitalsAnalytics";
+import { formatMedicationTime, parseMedicationTimes } from "../lib/medications/medicationSchedule";
 import type { MainTabParamList, MainStackParamList } from "../navigation/types";
 
 type Props = CompositeScreenProps<
@@ -87,7 +88,7 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
           notificationService.getNotifications(session.user.id),
         ]);
         setLatestVitals(vitals);
-        setMedications(meds.filter((m) => m.is_active));
+        setMedications(meds.filter((m) => (m.active ?? m.is_active) !== false));
         setUnreadCount(notifs.filter((n) => !n.is_read).length);
       }
     } catch { /* silent */ }
@@ -126,19 +127,23 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
 
   /* ── Vitals cards ── */
   const vitalsCards = [
-    { icon: "heart" as const, label: isAr ? "معدل القلب" : "Heart Rate", value: latestVitals?.heart_rate?.toString() ?? "--", unit: isAr ? "ن/د" : "bpm", color: colors.danger },
-    { icon: "fitness" as const, label: isAr ? "ضغط الدم" : "Blood Pressure", value: latestVitals?.blood_pressure_systolic ? `${latestVitals.blood_pressure_systolic}/${latestVitals.blood_pressure_diastolic}` : "--/--", unit: "mmHg", color: colors.primary },
-    { icon: "water" as const, label: isAr ? "الأكسجين" : "Oxygen", value: latestVitals?.oxygen_saturation?.toString() ?? "--", unit: "%", color: colors.success },
-    { icon: "thermometer" as const, label: isAr ? "الحرارة" : "Temp", value: latestVitals?.temperature?.toString() ?? "--", unit: "°C", color: colors.warning },
+    { icon: "heart" as const, label: isAr ? "معدل القلب" : "Heart Rate", value: latestVitals?.heart_rate?.toString() ?? "--", unit: isAr ? "ن/د" : "bpm", color: colors.danger, caption: isAr ? "آخر قراءة" : "Latest" },
+    { icon: "fitness" as const, label: isAr ? "ضغط الدم" : "Blood Pressure", value: latestVitals?.blood_pressure_systolic ? `${latestVitals.blood_pressure_systolic}/${latestVitals.blood_pressure_diastolic}` : "--/--", unit: "mmHg", color: colors.primary, caption: isAr ? "انقباض/انبساط" : "Sys/Dia" },
+    { icon: "water" as const, label: isAr ? "الأكسجين" : "Oxygen", value: latestVitals?.oxygen_saturation?.toString() ?? "--", unit: "%", color: colors.success, caption: isAr ? "تشبع" : "SpO2" },
+    { icon: "thermometer" as const, label: isAr ? "الحرارة" : "Temp", value: latestVitals?.temperature?.toString() ?? "--", unit: "°C", color: colors.warning, caption: isAr ? "الجسم" : "Body" },
   ];
 
   /* ── Next med ── */
   const nextMed = medications[0] ?? null;
+  const nextMedTime = useMemo(() => {
+    if (!nextMed) return null;
+    const first = parseMedicationTimes(nextMed.times, nextMed.time_of_day).find((dose) => dose.kind === "time");
+    return first?.kind === "time" ? formatMedicationTime(first.time) : nextMed.time_of_day?.[0] ?? null;
+  }, [nextMed]);
 
   /* ── Abnormal alert ── */
   const showAlert = healthStatus.color === colors.danger;
 
-  const snapW = screenW * 0.42;
   const chartW = (screenW - spacing.lg * 2 - spacing.md) / 2;
 
   return (
@@ -217,20 +222,40 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
             <AppText style={[s.sectionLink, { color: colors.primary }]}>{isAr ? "كل المقاسات" : "All readings"}</AppText>
           </TouchableOpacity>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.snapScroll}>
+        <View style={[s.vitalsPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[s.vitalsPanelTop, isRTL && s.rowReverse]}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <AppText style={[s.vitalsPanelTitle, { color: colors.textPrimary }]}>
+                {healthStatus.label}
+              </AppText>
+              <AppText style={[s.vitalsPanelSub, { color: colors.textSecondary }]}>
+                {latestVitals?.recorded_at
+                  ? new Date(latestVitals.recorded_at).toLocaleString(isAr ? "ar-EG" : "en-US", { hour: "numeric", minute: "2-digit", month: "short", day: "numeric" })
+                  : t.noData}
+              </AppText>
+            </View>
+            <View style={[s.vitalsSignal, { backgroundColor: healthStatus.color + "16", borderColor: healthStatus.color + "35" }]}>
+              <Ionicons name={healthStatus.icon} size={18} color={healthStatus.color} />
+            </View>
+          </View>
+          <View style={s.vitalsGrid}>
           {vitalsCards.map((card, i) => (
-            <View key={i} style={[s.snapCard, { width: snapW, backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[s.snapIcon, { backgroundColor: card.color + "14" }]}>
-                <Ionicons name={card.icon} size={18} color={card.color} />
+            <View key={i} style={[s.snapCard, { backgroundColor: colors.surfaceVariant, borderColor: colors.border }]}>
+              <View style={[s.snapTop, isRTL && s.rowReverse]}>
+                <View style={[s.snapIcon, { backgroundColor: card.color + "14" }]}>
+                  <Ionicons name={card.icon} size={17} color={card.color} />
+                </View>
+                <AppText style={[s.snapCaption, { color: colors.textSecondary }]}>{card.caption}</AppText>
               </View>
               <AppText style={[s.snapLabel, { color: colors.textSecondary }]}>{card.label}</AppText>
-              <View style={{ flexDirection: "row", alignItems: "baseline", gap: 3 }}>
+              <View style={[s.snapValueRow, isRTL && s.rowReverse]}>
                 <AppText style={[s.snapValue, { color: colors.textPrimary }]}>{card.value}</AppText>
                 <AppText style={[s.snapUnit, { color: colors.textSecondary }]}>{card.unit}</AppText>
               </View>
             </View>
           ))}
-        </ScrollView>
+          </View>
+        </View>
 
         {/* ═══ TREND CHART ═══ */}
         <View style={s.sectionRow}>
@@ -281,9 +306,9 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
                 {nextMed.dosage} · {nextMed.frequency}
               </AppText>
             </View>
-            {nextMed.time_of_day?.[0] && (
+            {nextMedTime && (
               <View style={[s.timeBadge, { backgroundColor: colors.primary + "12" }]}>
-                <AppText style={[s.timeText, { color: colors.primary }]}>{nextMed.time_of_day[0]}</AppText>
+                <AppText style={[s.timeText, { color: colors.primary }]}>{nextMedTime}</AppText>
               </View>
             )}
           </View>
@@ -333,11 +358,20 @@ const s = StyleSheet.create({
   sectionLink: { fontSize: 13, fontWeight: "600" },
 
   /* Vitals snapshot */
+  vitalsPanel: { borderRadius: radius.lg, borderWidth: 1, padding: spacing.md, gap: spacing.md, marginBottom: spacing.md },
+  vitalsPanelTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  vitalsPanelTitle: { fontSize: 17, fontWeight: "800" },
+  vitalsPanelSub: { fontSize: 12, fontWeight: "600" },
+  vitalsSignal: { width: 38, height: 38, borderRadius: 13, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  vitalsGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   snapScroll: { gap: spacing.sm, paddingRight: spacing.lg, marginBottom: spacing.md },
-  snapCard: { borderRadius: radius.lg, borderWidth: 1, padding: spacing.md, gap: 6 },
-  snapIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  snapCard: { width: "48%", minWidth: 140, flexGrow: 1, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, gap: 7 },
+  snapTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  snapIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  snapCaption: { fontSize: 10, fontWeight: "700" },
   snapLabel: { fontSize: 11, fontWeight: "600" },
-  snapValue: { fontSize: 22, fontWeight: "800", letterSpacing: -0.5 },
+  snapValueRow: { flexDirection: "row", alignItems: "baseline", gap: 4 },
+  snapValue: { fontSize: 23, fontWeight: "900", letterSpacing: 0 },
   snapUnit: { fontSize: 11, fontWeight: "600" },
 
   /* Trend chart */

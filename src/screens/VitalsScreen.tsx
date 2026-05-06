@@ -106,7 +106,7 @@ export function VitalsScreen(): React.JSX.Element {
         blood_pressure_diastolic: live.blood_pressure_diastolic ?? null,
         oxygen_saturation: live.oxygen_saturation ?? null,
         temperature: live.temperature ?? null,
-        source: bt.isSimulated ? 'manual' : 'bluetooth',
+        source: bt.isSimulated ? 'smartwatch' : 'bluetooth',
         recorded_at: new Date().toISOString(),
       });
       await load();

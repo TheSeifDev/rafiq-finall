@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createNavigationContainerRef } from "@react-navigation/native";
 import * as ScreenOrientation from "expo-screen-orientation";
 import * as Notifications from "expo-notifications";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HomeScreen } from "../screens/HomeScreen";
 import { VitalsScreen } from "../screens/VitalsScreen";
 import { EmergencyScreen } from "../screens/EmergencyScreen";
@@ -22,6 +23,7 @@ import { useAppStore } from "../store/app.store";
 import { translations } from "../constants/translations";
 import { PrivacyPolicyScreen } from "../screens/PrivacyPolicyScreen";
 import { TermsOfServiceScreen } from "../screens/TermsOfServiceScreen";
+import { notificationService } from "../services/notification.service";
 import type {
   MainTabParamList,
   MainStackParamList,
@@ -34,6 +36,50 @@ export const navigationRef = createNavigationContainerRef<MainStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const ProfileStackNav = createNativeStackNavigator<ProfileStackParamList>();
 const MainStack = createNativeStackNavigator<MainStackParamList>();
+const DELIVERED_NOTIFICATION_KEYS = "rafiq_delivered_local_notifications_v1";
+
+async function markLocalNotificationDelivered(key: string): Promise<boolean> {
+  const raw = await AsyncStorage.getItem(DELIVERED_NOTIFICATION_KEYS);
+  let parsed: Record<string, string> = {};
+  if (raw) {
+    try {
+      parsed = JSON.parse(raw) as Record<string, string>;
+    } catch {
+      parsed = {};
+    }
+  }
+  if (parsed[key]) return false;
+  parsed[key] = new Date().toISOString();
+  await AsyncStorage.setItem(DELIVERED_NOTIFICATION_KEYS, JSON.stringify(parsed));
+  return true;
+}
+
+function navigateFromNotificationData(data: Record<string, unknown> | undefined): void {
+  if (!navigationRef.isReady()) return;
+  const screen = typeof data?.screen === "string" ? data.screen : "NotificationCenter";
+
+  if (screen === "Medications") {
+    navigationRef.navigate("MainTabs", { screen: "Medications" });
+    return;
+  }
+  if (screen === "Vitals") {
+    navigationRef.navigate("MainTabs", { screen: "Vitals" });
+    return;
+  }
+  if (screen === "Chat") {
+    navigationRef.navigate("MainTabs", { screen: "Chat" });
+    return;
+  }
+  if (screen === "Emergency") {
+    navigationRef.navigate("Emergency");
+    return;
+  }
+  if (screen === "NotificationSettings") {
+    navigationRef.navigate("NotificationSettings");
+    return;
+  }
+  navigationRef.navigate("NotificationCenter");
+}
 
 // ─── Profile Stack (nested inside Profile tab) ──────────────
 function ProfileStackNavigator(): React.JSX.Element {
@@ -150,18 +196,41 @@ export function MainNavigator(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const screen = response.notification.request.content.data?.screen as
-          | string
-          | undefined;
-        if (!navigationRef.isReady()) return;
-        if (screen === "NotificationCenter") {
-          navigationRef.navigate("NotificationCenter");
-        }
+    const receivedSub = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        const data = notification.request.content.data as Record<string, unknown> | undefined;
+        const kind = typeof data?.kind === "string" ? data.kind : undefined;
+        const userId = typeof data?.userId === "string" ? data.userId : undefined;
+        const notificationKey =
+          typeof data?.notificationKey === "string"
+            ? data.notificationKey
+            : notification.request.identifier;
+
+        if (kind !== "medication_reminder" || !userId) return;
+
+        markLocalNotificationDelivered(notificationKey)
+          .then((shouldCreate) => {
+            if (!shouldCreate) return;
+            return notificationService.createNotification({
+              user_id: userId,
+              title: notification.request.content.title ?? "Medication reminder",
+              body: notification.request.content.body ?? "Time for your medication.",
+              type: "medication_reminder",
+            });
+          })
+          .catch(() => undefined);
       },
     );
-    return () => sub.remove();
+
+    const sub = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        navigateFromNotificationData(response.notification.request.content.data as Record<string, unknown> | undefined);
+      },
+    );
+    return () => {
+      receivedSub.remove();
+      sub.remove();
+    };
   }, []);
 
   return (

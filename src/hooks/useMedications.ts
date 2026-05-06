@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { medicationService } from '../services/medication.service';
-import type { Medication } from '../types/database';
+import { medicationService, type Medication } from '../services/medication.service';
 
 interface UseMedicationsResult {
   medications: Medication[];

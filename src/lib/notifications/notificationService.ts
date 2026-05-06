@@ -53,6 +53,23 @@ export function buildIdentifier(medicationId: string, hour: number, minute: numb
   return `med_${medicationId}_${hour}_${minute}`;
 }
 
+export type NotificationTarget =
+  | 'NotificationCenter'
+  | 'Medications'
+  | 'Vitals'
+  | 'Chat'
+  | 'Emergency'
+  | 'NotificationSettings';
+
+export type LocalNotificationKind =
+  | 'medication_reminder'
+  | 'med_low_stock'
+  | 'med_missed_check'
+  | 'vitals_alert'
+  | 'chat_message'
+  | 'test'
+  | 'general';
+
 // ─── Time calculation for Expo Go ───────────────────────────
 
 /**
@@ -76,8 +93,9 @@ export async function scheduleMedicationReminder(params: {
   minute: number;
   language?: 'ar' | 'en';
   prefs?: NotificationPrefs;
+  userId?: string;
 }): Promise<string> {
-  const { medicationId, medicationName, hour, minute, language = 'ar' } = params;
+  const { medicationId, medicationName, hour, minute, language = 'ar', userId } = params;
   const identifier = buildIdentifier(medicationId, hour, minute);
 
   // Cancel existing to prevent duplicates
@@ -100,7 +118,14 @@ export async function scheduleMedicationReminder(params: {
     content: {
       title,
       body,
-      data: { screen: 'NotificationCenter', medicationId },
+      data: {
+        screen: 'Medications',
+        kind: 'medication_reminder',
+        type: 'medication_reminder',
+        medicationId,
+        userId,
+        notificationKey: identifier,
+      },
       sound: 'default',
       ...(Platform.OS === 'android' && { channelId: 'medications' }),
     },
@@ -129,6 +154,42 @@ export async function cancelAllRemindersForMedication(medicationId: string): Pro
   await Promise.all(mine.map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
 }
 
+export async function scheduleImmediateLocalNotification(params: {
+  title: string;
+  body: string;
+  screen?: NotificationTarget;
+  kind?: LocalNotificationKind;
+  data?: Record<string, unknown>;
+  seconds?: number;
+  identifier?: string;
+  channelId?: string;
+}): Promise<string> {
+  const granted = await requestNotificationPermission();
+  if (!granted) throw new Error('Notification permission not granted');
+
+  await ensureAndroidChannel();
+
+  return Notifications.scheduleNotificationAsync({
+    identifier: params.identifier,
+    content: {
+      title: params.title,
+      body: params.body,
+      data: {
+        screen: params.screen ?? 'NotificationCenter',
+        kind: params.kind ?? 'general',
+        type: params.kind ?? 'general',
+        ...(params.data ?? {}),
+      },
+      sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: params.channelId ?? 'medications' }),
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: Math.max(1, params.seconds ?? 1),
+    },
+  });
+}
+
 // ─── Cancel ALL notifications ───────────────────────────────
 
 export async function cancelAllNotifications(): Promise<void> {
@@ -144,19 +205,12 @@ export async function getScheduledNotifications() {
 // ─── Test notification (immediate, 5 second delay) ──────────
 
 export async function sendTestNotification(language: 'ar' | 'en'): Promise<string> {
-  await ensureAndroidChannel();
-
-  return Notifications.scheduleNotificationAsync({
-    content: {
-      title: language === 'ar' ? '🔔 إشعار تجريبي' : '🔔 Test notification',
-      body: language === 'ar' ? 'إشعارات رفيق تعمل بنجاح!' : 'Rafiq notifications are working!',
-      sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: 'medications' }),
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: 5,
-    },
+  return scheduleImmediateLocalNotification({
+    title: language === 'ar' ? 'إشعار تجريبي' : 'Test notification',
+    body: language === 'ar' ? 'إشعارات رفيق تعمل بنجاح!' : 'Rafiq notifications are working!',
+    screen: 'NotificationCenter',
+    kind: 'test',
+    seconds: 5,
   });
 }
 

@@ -5,7 +5,7 @@ import { AppText } from '../ui/AppText';
 import { useTheme } from '../../theme/useTheme';
 import { radius, spacing } from '../../theme';
 import { classifyStock } from '../../lib/medications/medicationMath';
-import { estimateDosesPerDay, parseMedicationTimes } from '../../lib/medications/medicationSchedule';
+import { estimateDosesPerDay, formatMedicationTime, parseMedicationTimes } from '../../lib/medications/medicationSchedule';
 import type { Medication } from '../../services/medication.service';
 
 function pickAccent(name: string): string {
@@ -122,7 +122,7 @@ export function MedicationExpandableCard({
                 <MetaChip
                   key={`${t.kind}-${idx}`}
                   icon={t.kind === 'time' ? 'alarm' : 'sunny'}
-                  text={t.kind === 'time' ? t.time : t.label}
+                  text={t.kind === 'time' ? formatMedicationTime(t.time) : t.label}
                 />
               ))}
               {times.length > 4 && <MetaChip icon="ellipsis-horizontal" text={isRTL ? 'المزيد' : 'More'} />}

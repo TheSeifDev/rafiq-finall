@@ -16,7 +16,7 @@
  *   composer.marginBottom = tabBarHeight + safeArea.bottom + 8
  *   FlatList.paddingBottom = same + COMPOSER_H + quickReplies (~56) + spacing
  */
-import React, { useState, useRef, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   FlatList,
   View,
@@ -43,6 +43,11 @@ import { SuggestionsRow, type Suggestion } from "../components/chat/SuggestionsR
 import { useLocale } from "../hooks/useLocale";
 import { sendChat, type ChatMessage } from "../services/chat.service";
 import { useTheme } from "../theme/useTheme";
+import { useAuthStore } from "../store/auth.store";
+import { patientService } from "../services/patient.service";
+import { vitalsService } from "../services/vitals.service";
+import { medicationService } from "../services/medication.service";
+import { formatMedicationTime, parseMedicationTimes } from "../lib/medications/medicationSchedule";
 
 // ─── Layout constants (8pt system) ───────────────────────────────────────────
 const COMPOSER_H = 56;      // pill input bar height
@@ -112,6 +117,7 @@ function SendButton({
 export function ChatScreen(): React.JSX.Element {
   const { t, isRTL } = useLocale();
   const { colors } = useTheme();
+  const session = useAuthStore((s) => s.session);
   const { width: screenW } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -129,7 +135,58 @@ export function ChatScreen(): React.JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [typing, setTyping] = useState(false);
+  const [vitalsSummary, setVitalsSummary] = useState(t("noVitals"));
   const listRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadChatContext() {
+      if (!session?.user.id) {
+        setVitalsSummary(t("noVitals"));
+        return;
+      }
+
+      try {
+        const profile = await patientService.getProfile(session.user.id);
+        if (!profile) {
+          if (alive) setVitalsSummary(t("noVitals"));
+          return;
+        }
+
+        const [latestVitals, meds] = await Promise.all([
+          vitalsService.getLatestVitals(profile.id),
+          medicationService.getMedications(profile.id),
+        ]);
+
+        const activeMeds = meds
+          .filter((m) => (m.active ?? m.is_active) !== false)
+          .slice(0, 5)
+          .map((m) => {
+            const firstTime = parseMedicationTimes(m.times, m.time_of_day).find((dose) => dose.kind === "time");
+            const displayTime = firstTime?.kind === "time" ? formatMedicationTime(firstTime.time) : undefined;
+            return `${m.name}${m.dosage ? ` (${m.dosage})` : ""}${displayTime ? ` at ${displayTime}` : ""}`;
+          });
+
+        const parts = [
+          `Patient: ${profile.full_name || "Unknown"}`,
+          latestVitals
+            ? `Latest vitals: HR ${latestVitals.heart_rate ?? "unknown"} bpm, BP ${latestVitals.blood_pressure_systolic ?? "--"}/${latestVitals.blood_pressure_diastolic ?? "--"} mmHg, SpO2 ${latestVitals.oxygen_saturation ?? "unknown"}%, Temp ${latestVitals.temperature ?? "unknown"} C.`
+            : "Latest vitals: no saved readings.",
+          activeMeds.length ? `Active medications: ${activeMeds.join("; ")}.` : "Active medications: none saved.",
+        ];
+
+        if (alive) setVitalsSummary(parts.join("\n"));
+      } catch {
+        if (alive) setVitalsSummary(t("noVitals"));
+      }
+    }
+
+    loadChatContext();
+    return () => {
+      alive = false;
+    };
+  }, [session?.user.id, t]);
 
   // ── Static data (memoized) ────────────────────────────────────────────────
   const SUGGESTIONS = useMemo<Suggestion[]>(
@@ -165,7 +222,7 @@ export function ChatScreen(): React.JSX.Element {
       setTyping(true);
 
       try {
-        const reply = await sendChat(next, t("noVitals"));
+        const reply = await sendChat(next, vitalsSummary);
         setMessages((cur) => [...cur, { role: "assistant", content: reply }]);
       } catch {
         setMessages((cur) => [...cur, { role: "assistant", content: t("aiError") }]);
@@ -173,7 +230,7 @@ export function ChatScreen(): React.JSX.Element {
         setTyping(false);
       }
     },
-    [messages, text, t],
+    [messages, text, t, vitalsSummary],
   );
 
   const scrollToEnd = useCallback(() => {

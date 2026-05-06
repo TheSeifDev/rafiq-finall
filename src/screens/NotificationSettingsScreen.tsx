@@ -15,8 +15,10 @@ import { ScreenHeader } from '../components/ui/ScreenHeader';
 import { AppText } from '../components/ui/AppText';
 import { useTheme } from '../theme/useTheme';
 import { useAppStore, type NotificationPrefs } from '../store/app.store';
+import { useAuthStore } from '../store/auth.store';
 import { spacing, radius } from '../theme';
 import { sendTestNotification as sendTestNotif } from '../lib/notifications/notificationService';
+import { notificationService } from '../services/notification.service';
 
 // ─── Translations (inline — keeps the file self-contained) ───
 const T = {
@@ -251,6 +253,7 @@ export function NotificationSettingsScreen(): React.JSX.Element {
   const t = T[language];
   const prefs = useAppStore((s) => s.notificationPrefs);
   const setPrefs = useAppStore((s) => s.setNotificationPrefs);
+  const session = useAuthStore((s) => s.session);
   const [testLoading, setTestLoading] = useState(false);
 
   const isAr = language === 'ar';
@@ -279,13 +282,21 @@ export function NotificationSettingsScreen(): React.JSX.Element {
     setTestLoading(true);
     try {
       await sendTestNotif(isAr ? 'ar' : 'en');
+      if (session?.user.id) {
+        await notificationService.createNotification({
+          user_id: session.user.id,
+          title: isAr ? 'إشعار تجريبي' : 'Test notification',
+          body: isAr ? 'إشعارات رفيق تعمل بنجاح!' : 'Rafiq notifications are working!',
+          type: 'test',
+        });
+      }
       Alert.alert('', t.testSent);
     } catch {
       Alert.alert('', t.testFailed);
     } finally {
       setTestLoading(false);
     }
-  }, [isAr, t]);
+  }, [isAr, session?.user.id, t]);
 
   const allEnabled = prefs.medicationReminders && prefs.lowStockAlerts && prefs.emergencyAlerts && prefs.chatAlerts && prefs.vitalsAlerts;
 

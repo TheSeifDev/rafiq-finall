@@ -1,14 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import type { Medication, MedicationLog } from '../../services/medication.service';
-import { parseMedicationTimes } from '../medications/medicationSchedule';
+import { parseHHMM, parseMedicationTimes } from '../medications/medicationSchedule';
 import { classifyStock } from '../medications/medicationMath';
 import { notificationService } from '../../services/notification.service';
+import type { NotificationPrefs } from '../../store/app.store';
 import {
   requestNotificationPermission,
   ensureAndroidChannel,
   scheduleMedicationReminder,
   cancelAllRemindersForMedication,
+  scheduleImmediateLocalNotification,
 } from './notificationService';
 
 type ScheduledMap = Record<string, Record<string, string>>; // medId -> timeKey -> notifId
@@ -26,16 +28,6 @@ function alertsKey(userId: string): string {
 
 function timeKeyFor(medId: string, time: string): string {
   return `${medId}:${time}`;
-}
-
-function parseHHMM(time: string): { hour: number; minute: number } | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
-  if (!m) return null;
-  const hour = Number(m[1]);
-  const minute = Number(m[2]);
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
-  return { hour, minute };
 }
 
 // ─── Internal storage helpers (exported for reconciliation) ──
@@ -116,12 +108,14 @@ export async function syncMedicationReminders(opts: {
   language: 'ar' | 'en';
   enabled: boolean;
   medications: Medication[];
+  prefs?: NotificationPrefs;
 }): Promise<void> {
-  const { patientId, userId, medications, enabled, language } = opts;
+  const { patientId, userId, medications, enabled, language, prefs } = opts;
 
   // If disabled: cancel everything we previously scheduled.
   if (!enabled) {
     await cancelAllForPatient(patientId);
+    await evaluateAndSendAlerts({ patientId, userId, language, medications, prefs });
     return;
   }
 
@@ -166,6 +160,7 @@ export async function syncMedicationReminders(opts: {
           hour: hhmm.hour,
           minute: hhmm.minute,
           language,
+          userId,
         });
         nextMap[med.id][key] = id;
       } catch (err) {
@@ -179,7 +174,7 @@ export async function syncMedicationReminders(opts: {
   await writeMap(patientId, nextMap);
 
   // Alerts (in-app feed) — low stock + missed doses.
-  await evaluateAndSendAlerts({ patientId, userId, language, medications });
+  await evaluateAndSendAlerts({ patientId, userId, language, medications, prefs });
 }
 
 /**
@@ -268,8 +263,9 @@ async function evaluateAndSendAlerts(opts: {
   userId: string;
   language: 'ar' | 'en';
   medications: Medication[];
+  prefs?: NotificationPrefs;
 }): Promise<void> {
-  const { userId, language, medications } = opts;
+  const { userId, language, medications, prefs } = opts;
   const state = await readAlertsState(userId);
   const tk = todayKey();
 
@@ -280,6 +276,7 @@ async function evaluateAndSendAlerts(opts: {
 
     const stock = classifyStock({ remainingQuantity: med.remaining_quantity ?? null, refillThreshold: med.refill_threshold ?? null });
     if (stock.severity === 'safe') continue;
+    if (prefs?.lowStockAlerts === false) continue;
 
     const key = `low_stock:${med.id}:${tk}`;
     if (state[key]) continue;
@@ -292,6 +289,14 @@ async function evaluateAndSendAlerts(opts: {
 
     try {
       await notificationService.createNotification({ user_id: userId, title, body, type: 'med_low_stock' });
+      await scheduleImmediateLocalNotification({
+        title,
+        body,
+        screen: 'Medications',
+        kind: 'med_low_stock',
+        identifier: `low_stock_${med.id}_${tk}`,
+        data: { userId, medicationId: med.id, notificationKey: key },
+      }).catch(() => undefined);
       state[key] = new Date().toISOString();
     } catch {
       // ignore feed failures
@@ -300,7 +305,7 @@ async function evaluateAndSendAlerts(opts: {
 
   // Missed dose alert (lightweight heuristic): after 8pm
   const hourNow = new Date().getHours();
-  if (hourNow >= 20) {
+  if (hourNow >= 20 && prefs?.medicationReminders !== false) {
     for (const med of medications) {
       const active = (med.active ?? med.is_active) !== false;
       if (!active) continue;
@@ -318,6 +323,14 @@ async function evaluateAndSendAlerts(opts: {
 
       try {
         await notificationService.createNotification({ user_id: userId, title, body, type: 'med_missed_check' });
+        await scheduleImmediateLocalNotification({
+          title,
+          body,
+          screen: 'Medications',
+          kind: 'med_missed_check',
+          identifier: `missed_dose_${med.id}_${tk}`,
+          data: { userId, medicationId: med.id, notificationKey: key },
+        }).catch(() => undefined);
         state[key] = new Date().toISOString();
       } catch {
         // ignore

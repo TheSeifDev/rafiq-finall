@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { notificationService } from '../services/notification.service';
+import { notificationService, type AppNotification } from '../services/notification.service';
 import { useAuthStore } from '../store/auth.store';
-import type { Notification } from '../types/database';
 
 interface UseNotificationsResult {
-  notifications: Notification[];
+  notifications: AppNotification[];
   unreadCount: number;
   loading: boolean;
   error: string | null;
@@ -21,7 +20,7 @@ interface UseNotificationsResult {
 export function useNotifications(): UseNotificationsResult {
   const session = useAuthStore((s) => s.session);
   const user = session?.user ?? null;
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

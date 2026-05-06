@@ -1,26 +1,12 @@
 import { useEffect, useRef } from 'react';
 import type { Medication } from '../services/medication.service';
-import { parseMedicationTimes } from '../lib/medications/medicationSchedule';
+import { parseHHMM, parseMedicationTimes } from '../lib/medications/medicationSchedule';
 import {
   scheduleMedicationReminder,
   cancelAllRemindersForMedication,
   requestNotificationPermission,
 } from '../lib/notifications/notificationService';
 import { useAppStore } from '../store/app.store';
-
-/**
- * Parses a time string like "08:00" or "14:30" into { hour, minute }.
- * Returns null if parsing fails or the values are out of range.
- */
-function parseHHMM(time: string): { hour: number; minute: number } | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
-  if (!m) return null;
-  const hour = Number(m[1]);
-  const minute = Number(m[2]);
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
-  return { hour, minute };
-}
 
 /**
  * Hook that synchronises scheduled notifications with the medications list.

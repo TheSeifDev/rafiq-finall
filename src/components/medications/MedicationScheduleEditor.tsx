@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '../ui/AppText';
 import { useTheme } from '../../theme/useTheme';
 import { radius, spacing } from '../../theme';
-import { normalizeTime } from '../../lib/medications/medicationSchedule';
+import { formatMedicationTime, normalizeTime } from '../../lib/medications/medicationSchedule';
 
 export type ScheduleDraft = {
   scheduleType: string;
@@ -43,7 +43,7 @@ const DAYS_OF_WEEK: Array<{ index: number; ar: string; en: string }> = [
 ];
 
 function ensureSlots(times: string[], scheduleType: string): string[] {
-  const base = times.length ? [...times] : ['08:00'];
+  const base = times.length ? [...times] : ['8:00 AM'];
   const need =
     scheduleType === 'once_daily' ? 1
     : scheduleType === 'twice_daily' ? 2
@@ -204,6 +204,12 @@ export function MedicationScheduleEditor({
                 onChangeText={(v) => {
                   const next = [...times];
                   next[idx] = v;
+                  onChange({ ...value, times: next });
+                }}
+                onBlur={() => {
+                  if (!normalized) return;
+                  const next = [...times];
+                  next[idx] = formatMedicationTime(normalized);
                   onChange({ ...value, times: next });
                 }}
                 placeholder={labels.hhmm}
