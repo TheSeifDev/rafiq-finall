@@ -11,6 +11,7 @@ import { linking } from './src/navigation/linking';
 import { useAuthStore } from './src/store/auth.store';
 import { initNotificationsOnce } from './src/lib/notifications/medicationReminders';
 import { navigationRef } from './src/navigation/MainNavigator';
+import { initializeNotificationChannels } from './src/lib/notifications/notificationPipeline';
 
 // ─── Disable auto-server-registration in Expo Go ────────────
 if (Constants.appOwnership === 'expo') {
@@ -36,7 +37,13 @@ function Boot(): React.JSX.Element {
   useEffect(() => {
     hydrate(Localization.getLocales()[0]?.languageCode === 'ar' ? 'ar' : 'en').catch(() => undefined);
     initialize().catch(() => undefined);
-    initNotificationsOnce().catch((e) => console.warn('[Notifications] Init failed:', e));
+
+    // Initialize all notification channels and handlers
+    const setupNotifications = async () => {
+      await initializeNotificationChannels().catch(console.warn);
+      await initNotificationsOnce().catch((e) => console.warn('[Notifications] Init failed:', e));
+    };
+    setupNotifications();
   }, [hydrate, initialize]);
 
   // ✅ LOCKED direction container — prevents any child from

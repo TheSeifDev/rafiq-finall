@@ -43,6 +43,9 @@ export type ProfileStackParamList = {
   Privacy: undefined;
   TermsOfService: undefined;
   PrivacyPolicy: undefined;
+  Food: undefined;
+  WeeklyTrends: undefined;
+  WearablePairing: undefined;
 };
 
 // ─── Screen-prop helpers ────────────────────────────────────

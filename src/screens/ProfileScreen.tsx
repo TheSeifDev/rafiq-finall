@@ -346,7 +346,13 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
         {/* ════════ HEALTH DATA ════════ */}
         <SectionCard title={t.healthData} darkMode={darkMode} colors={colors}>
           <SettingsRow icon="medical-outline" iconColor="#10B981" label={t.medications}
-            onPress={() => navigation.navigate("Medications")} darkMode={darkMode} colors={colors} isLast />
+            onPress={() => navigation.navigate("Medications")} darkMode={darkMode} colors={colors} />
+          <SettingsRow icon="restaurant-outline" iconColor="#F97316" label={t.foodTitle || (isAr ? 'التغذية' : 'Nutrition')}
+            onPress={() => navigation.navigate("Food")} darkMode={darkMode} colors={colors} />
+          <SettingsRow icon="trending-up-outline" iconColor="#8B5CF6" label={t.weeklyTrendsTitle || (isAr ? 'الاتجاهات الأسبوعية' : 'Weekly Trends')}
+            onPress={() => navigation.navigate("WeeklyTrends")} darkMode={darkMode} colors={colors} />
+          <SettingsRow icon="watch-outline" iconColor="#00C2FF" label={t.pairingTitle || (isAr ? 'ربط الساعة' : 'Watch Pairing')}
+            onPress={() => navigation.navigate("WearablePairing")} darkMode={darkMode} colors={colors} isLast />
         </SectionCard>
 
         {/* ════════ SECURITY ════════ */}

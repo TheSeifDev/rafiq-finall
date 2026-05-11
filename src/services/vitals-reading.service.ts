@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase } from '../lib/supabase';
 import type { VitalsReading, VitalsReadingInsert } from '../types/database';
 import { toFiniteNumberOrNull } from '../utils/number';
 

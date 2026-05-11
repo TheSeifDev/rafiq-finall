@@ -23,6 +23,9 @@ import { useAppStore } from "../store/app.store";
 import { translations } from "../constants/translations";
 import { PrivacyPolicyScreen } from "../screens/PrivacyPolicyScreen";
 import { TermsOfServiceScreen } from "../screens/TermsOfServiceScreen";
+import { FoodScreen } from "../screens/FoodScreen";
+import { WeeklyTrendsScreen } from "../screens/WeeklyTrendsScreen";
+import { WearablePairingScreen } from "../screens/WearablePairingScreen";
 import { notificationService } from "../services/notification.service";
 import type {
   MainTabParamList,
@@ -119,6 +122,21 @@ function ProfileStackNavigator(): React.JSX.Element {
       <ProfileStackNav.Screen
         name="PrivacyPolicy"
         component={PrivacyPolicyScreen}
+        options={{ animation: "slide_from_right" }}
+      />
+      <ProfileStackNav.Screen
+        name="Food"
+        component={FoodScreen}
+        options={{ animation: "slide_from_right" }}
+      />
+      <ProfileStackNav.Screen
+        name="WeeklyTrends"
+        component={WeeklyTrendsScreen}
+        options={{ animation: "slide_from_right" }}
+      />
+      <ProfileStackNav.Screen
+        name="WearablePairing"
+        component={WearablePairingScreen}
         options={{ animation: "slide_from_right" }}
       />
     </ProfileStackNav.Navigator>
