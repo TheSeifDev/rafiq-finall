@@ -23,6 +23,7 @@ import { vitalsService } from '../services/vitals.service';
 import { patientService } from '../services/patient.service';
 import { wearableService } from '../services/wearable/ble.service';
 import { useAuthStore } from '../store/auth.store';
+import { ZoneLineChart } from '../components/charts';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const CHART_W = SCREEN_W - spacing.lg * 2 - 16;
@@ -447,13 +448,12 @@ export function WeeklyTrendsScreen(): React.JSX.Element {
 
         {/* ── Heart Rate Chart ── */}
         <ChartCard title={isAr ? 'معدل نبض القلب' : 'Heart Rate'} icon="heart" accentColor="#EF4444" darkMode={darkMode}>
-          <LineChart
+          <ZoneLineChart
             data={hrChartData}
-            width={CHART_W}
+            vitalType="heart_rate"
             height={CHART_H}
-            chartConfig={{ ...chartConfig, color: () => '#EF4444', fillShadowGradientFrom: '#EF4444' }}
-            bezier style={styles.chart}
-            withInnerLines withOuterLines={false} fromZero={false} segments={3}
+            showZones showLiveIndicator={false}
+            isRTL={isRTL} isAr={isAr}
           />
           <View style={styles.chartMeta}>
             <AppText style={styles.chartMetaText}>
@@ -467,13 +467,12 @@ export function WeeklyTrendsScreen(): React.JSX.Element {
 
         {/* ── SpO2 Chart ── */}
         <ChartCard title={isAr ? 'تشبع الأكسجين' : 'Blood Oxygen'} icon="water" accentColor={colors.primary} darkMode={darkMode}>
-          <LineChart
+          <ZoneLineChart
             data={spo2ChartData}
-            width={CHART_W}
+            vitalType="spo2"
             height={CHART_H}
-            chartConfig={{ ...chartConfig, color: () => colors.primary, fillShadowGradientFrom: colors.primary }}
-            bezier style={styles.chart}
-            withInnerLines withOuterLines={false} fromZero={false} segments={2}
+            showZones showLiveIndicator={false}
+            isRTL={isRTL} isAr={isAr}
           />
           <View style={styles.chartMeta}>
             <AppText style={styles.chartMetaText}>
@@ -489,13 +488,12 @@ export function WeeklyTrendsScreen(): React.JSX.Element {
 
         {/* ── Sleep Chart ── */}
         <ChartCard title={isAr ? 'ساعات النوم' : 'Sleep Duration'} icon="moon" accentColor="#8B5CF6" darkMode={darkMode}>
-          <LineChart
+          <ZoneLineChart
             data={sleepChartData}
-            width={CHART_W}
+            vitalType="sleep"
             height={CHART_H}
-            chartConfig={{ ...chartConfig, color: () => '#8B5CF6', fillShadowGradientFrom: '#8B5CF6' }}
-            bezier style={styles.chart}
-            withInnerLines withOuterLines={false} fromZero={false} segments={3}
+            showZones showLiveIndicator={false}
+            isRTL={isRTL} isAr={isAr}
           />
           <View style={styles.chartMeta}>
             <AppText style={styles.chartMetaText}>
