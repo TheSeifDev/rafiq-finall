@@ -351,10 +351,10 @@ export function WeeklyTrendsScreen(): React.JSX.Element {
     datasets: [{ data: data.days.map(d => d.sleep), color: () => '#8B5CF6', strokeWidth: 2 }],
   }], [data]);
 
-  const stepsChartData = useMemo(() => [{
+  const stepsChartData = useMemo(() => ({
     labels: data.days.map(d => d.dayShort),
     datasets: [{ data: data.days.map(d => Math.round(d.steps / 1000)) }],
-  }], [data]);
+  }), [data]);
 
   const pillColor = (score: number) => {
     if (score >= 80) return colors.success;

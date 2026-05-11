@@ -104,36 +104,14 @@ async function detectCapabilities(): Promise<PlatformCapabilities> {
   let canUseAccelerometer = true;
   let canUsePedometer = true;
 
-  try {
-    if (platform === 'ios') {
-      const { useHealthKit } = await import('../services/integrations/healthkit.service');
-      canAccessHealthKit = await useHealthKit().isAvailable();
-    }
-  } catch { /* ignore */ }
-
   // ── Notifications ──
   const canSendPushNotifications = !IS_EXPO_GO;
   const canUseScheduledNotifications = true;
   const canUseEmergencyFullScreen = platform === 'android';
 
   // ── Storage ──
-  let canUseMMKV = !IS_EXPO_GO;
+  // MMKV requires native build — default to asyncstorage for Expo Go
   let storageStrategy: PlatformCapabilities['storageStrategy'] = 'asyncstorage';
-  if (canUseMMKV) {
-    try {
-      const { MMKV } = await import('react-native-mmkv');
-      const t = new MMKV({ id: 'rafiq-test' });
-      t.set('__test', '1');
-      if (t.getString('__test') === '1') {
-        storageStrategy = 'mmkv';
-      } else {
-        storageStrategy = 'fallback';
-      }
-      t.delete('__test');
-    } catch {
-      storageStrategy = 'asyncstorage';
-    }
-  }
 
   // ── Location ──
   const canUseBackgroundLocation = platform === 'android' && !IS_EXPO_GO;
@@ -184,8 +162,8 @@ async function detectCapabilities(): Promise<PlatformCapabilities> {
     canSendPushNotifications,
     canUseScheduledNotifications,
     canUseEmergencyFullScreen,
-    canUseMMKV: storageStrategy === 'mmkv',
     storageStrategy,
+    canUseMMKV: false, // requires native build
     canUseBackgroundLocation,
     canUseForegroundLocation,
     canUseCamera,

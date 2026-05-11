@@ -123,14 +123,8 @@ async function phaseRealtime(): Promise<void> {
 }
 
 async function phaseWearable(): Promise<{ connected: boolean; deviceId?: string }> {
-  try {
-    const { wearableService } = await import('../services/wearable/ble.service');
-    const status = wearableService.getStatus();
-    if (status.connectionState === 'active' && status.device) {
-      return { connected: true, deviceId: status.device.id };
-    }
-    return { connected: false };
-  } catch { return { connected: false }; }
+  // BLE service is stub-only in Expo Go — always report disconnected
+  return { connected: false };
 }
 
 async function phaseNavigation(): Promise<void> {

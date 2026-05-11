@@ -9,11 +9,11 @@
  */
 
 export type EventBus = {
-  emit(event: Event<Record<string, unknown>>): void;
-  on(key: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void;
-  once(key: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void;
-  onWildcard(pattern: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void;
-  onceWildcard(pattern: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void;
+  emit(event: Event): void;
+  on(key: string, handler: (event: Event) => void | Promise<void>): () => void;
+  once(key: string, handler: (event: Event) => void | Promise<void>): () => void;
+  onWildcard(pattern: string, handler: (event: Event) => void | Promise<void>): () => void;
+  onceWildcard(pattern: string, handler: (event: Event) => void | Promise<void>): () => void;
   off(key: string): void;
   offWildcard(pattern: string): void;
   offAll(): void;
@@ -21,9 +21,7 @@ export type EventBus = {
   listenerCountWildcard(pattern: string): number;
 };
 
-export type Event<
-  T extends Record<string, unknown> = Record<string, unknown>,
-> = {
+export type Event<T = Record<string, unknown>> = {
   type: string;
   source: EventSource;
   timestamp: number;
@@ -43,12 +41,8 @@ export type RafiqDomainEvent<
   metadata?: EventMetadata;
 };
 
-// Type alias for domain events — maps2-type to 1-type form
-// Re-exports as RafiqEvent so domain events module can use a distinct name
-export type RafiqEvent<
-  Type extends string,
-  Payload extends Record<string, unknown> = Record<string, unknown>,
-> = Event<Payload>;
+// Type alias for domain events — no index-signature constraint
+export type RafiqEvent<T = Record<string, unknown>> = Event<T>;
 
 export type EventSource = 'wearable' | 'backend' | 'local' | 'ai' | 'system' | 'manual';
 
@@ -116,7 +110,7 @@ export type RafiqEventMap = {
 // ─── Implementation ─────────────────────────────────────────────
 
 type ListenerEntry = {
-  handler: (event: Event<Record<string, unknown>>) => void | Promise<void>;
+  handler: (event: Event) => void | Promise<void>;
   once: boolean;
 };
 
@@ -150,7 +144,7 @@ export function createEventBus(): EventBus {
 
       for (const entry of snapshot) {
         try {
-          const result = entry.handler(event as Event<Record<string, unknown>>);
+          const result = entry.handler(event as Event);
           if (result instanceof Promise) {
             result.catch((err) =>
               console.warn(`[EventBus] Async handler error for "${event.type}":`, err)
@@ -176,7 +170,7 @@ export function createEventBus(): EventBus {
 
       for (const { entry } of wildcardSnapshot) {
         try {
-          const result = entry.handler(event as Event<Record<string, unknown>>);
+          const result = entry.handler(event as Event);
           if (result instanceof Promise) {
             result.catch((err) =>
               console.warn(`[EventBus] Async wildcard handler error for "${event.type}":`, err)
@@ -200,7 +194,7 @@ export function createEventBus(): EventBus {
       }
     },
 
-    on(key: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void {
+    on(key: string, handler: (event: Event) => void | Promise<void>): () => void {
       if (!listeners.has(key)) {
         listeners.set(key, []);
       }
@@ -224,7 +218,7 @@ export function createEventBus(): EventBus {
       };
     },
 
-    once(key: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void {
+    once(key: string, handler: (event: Event) => void | Promise<void>): () => void {
       if (!listeners.has(key)) {
         listeners.set(key, []);
       }
@@ -244,7 +238,7 @@ export function createEventBus(): EventBus {
       listeners.delete(key);
     },
 
-    onWildcard(pattern: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void {
+    onWildcard(pattern: string, handler: (event: Event) => void | Promise<void>): () => void {
       if (!wildcardListeners.has(pattern)) {
         wildcardListeners.set(pattern, []);
       }
@@ -260,7 +254,7 @@ export function createEventBus(): EventBus {
       };
     },
 
-    onceWildcard(pattern: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void {
+    onceWildcard(pattern: string, handler: (event: Event) => void | Promise<void>): () => void {
       if (!wildcardListeners.has(pattern)) {
         wildcardListeners.set(pattern, []);
       }

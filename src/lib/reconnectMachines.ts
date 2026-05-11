@@ -14,9 +14,9 @@
  *   - Half-open probe after cooldown
  *   - Rolling failure window tracking
  */
-import { wearableService } from '../../services/wearable/ble.service';
-import { supabase } from '../supabase';
-import { eventBus } from '../../events/EventBus';
+import { wearableService } from '../services/wearable/ble.service';
+import { supabase } from '../services/supabase';
+import { eventBus } from '../events/EventBus';
 import { CircuitBreaker, getCircuitBreaker, CircuitOpenError } from './circuitBreaker';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
