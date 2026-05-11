@@ -14,8 +14,10 @@ export type VitalsRecord = {
 };
 
 export const vitalsService = {
-  async getVitalsHistory(patientId: string): Promise<VitalsRecord[]> {
-    const { data, error } = await supabase.from('vitals').select('*').eq('patient_id', patientId).order('recorded_at', { ascending: false });
+  async getVitalsHistory(patientId: string, limitDays?: number): Promise<VitalsRecord[]> {
+    let query = supabase.from('vitals').select('*').eq('patient_id', patientId).order('recorded_at', { ascending: false });
+    if (limitDays) query = query.limit(limitDays);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return (data ?? []) as VitalsRecord[];
   },

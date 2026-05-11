@@ -289,6 +289,7 @@ export function WeeklyTrendsScreen(): React.JSX.Element {
   const { colors, darkMode } = useTheme();
   const language = useAppStore((s) => s.language);
   const isAr = language === 'ar';
+  const isRTL = isAr;
 
   const session = useAuthStore((s) => s.session);
   const [data, setData] = useState<WeeklyData>({
@@ -335,25 +336,25 @@ export function WeeklyTrendsScreen(): React.JSX.Element {
     fillShadowGradientToOpacity: 0,
   }), [colors, darkMode]);
 
-  const hrChartData = useMemo(() => ({
+  const hrChartData = useMemo(() => [{
     labels: data.days.map(d => d.dayShort),
     datasets: [{ data: data.days.map(d => d.hr), color: () => '#EF4444', strokeWidth: 2 }],
-  }), [data]);
+  }], [data]);
 
-  const spo2ChartData = useMemo(() => ({
+  const spo2ChartData = useMemo(() => [{
     labels: data.days.map(d => d.dayShort),
     datasets: [{ data: data.days.map(d => d.spo2), color: () => colors.primary, strokeWidth: 2 }],
-  }), [data, colors]);
+  }], [data, colors]);
 
-  const sleepChartData = useMemo(() => ({
+  const sleepChartData = useMemo(() => [{
     labels: data.days.map(d => d.dayShort),
     datasets: [{ data: data.days.map(d => d.sleep), color: () => '#8B5CF6', strokeWidth: 2 }],
-  }), [data]);
+  }], [data]);
 
-  const stepsChartData = useMemo(() => ({
+  const stepsChartData = useMemo(() => [{
     labels: data.days.map(d => d.dayShort),
     datasets: [{ data: data.days.map(d => Math.round(d.steps / 1000)) }],
-  }), [data]);
+  }], [data]);
 
   const pillColor = (score: number) => {
     if (score >= 80) return colors.success;

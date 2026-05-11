@@ -130,7 +130,6 @@ export class BLEReconnectMachine extends BaseReconnectMachine {
   protected async reconnect(): Promise<void> {
     if (!this.deviceId) return;
     this.transitionTo('connecting');
-    this.attempts = 0;
 
     await this.circuit.execute(async () => {
       await wearableService.connect(this.deviceId!);

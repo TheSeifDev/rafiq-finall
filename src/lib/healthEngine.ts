@@ -54,6 +54,8 @@ export interface VitalReadingWithMeta extends VitalsReading {
   hasMotionArtifact?: boolean;
   /** Device-reported battery level (0-100) */
   batteryLevel?: number;
+  /** Whether this reading came from a simulated device */
+  is_simulated?: boolean;
 }
 
 export function computeConfidenceScore(reading: VitalReadingWithMeta): ConfidenceScore {

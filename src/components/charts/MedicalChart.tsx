@@ -39,7 +39,7 @@ export interface HealthZone {
   min: number;
   max: number;
   color: string;
-  status: 'normal' | 'elevated' | 'critical';
+  status: 'normal' | 'elevated' | 'critical' | 'degraded';
 }
 
 export interface MedicalChartProps {
@@ -228,14 +228,21 @@ export function MedicalChart({
     return { yMin: paddedMin, yMax: paddedMax, scaleY: scale };
   }, [data, propYMin, propYMax, graphHeight]);
 
-  // ── Data points ──
+  // ── Point decimation (LTTB-lite) when data > 50 to keep renders smooth ──
+  const decimatedData = useMemo(() => {
+    if (data.length <= 50) return data;
+    const step = Math.ceil(data.length / 50);
+    return data.filter((_, i) => i % step === 0);
+  }, [data.length]);
+
+  // ── Data points (from decimated) ──
   const svgPoints = useMemo(() => {
-    return data.map((d, i) => ({
-      x: padding.left + (i / Math.max(data.length - 1, 1)) * graphWidth,
+    return decimatedData.map((d, i) => ({
+      x: padding.left + (i / Math.max(decimatedData.length - 1, 1)) * graphWidth,
       y: scaleY(d.value),
       ...d,
     }));
-  }, [data, graphWidth, scaleY]);
+  }, [decimatedData, graphWidth, scaleY]);
 
   // ── Bezier paths ──
   const linePath = useMemo(() => buildSmoothPath(svgPoints), [svgPoints]);

@@ -24,10 +24,9 @@ import { eventBus } from '../../events/EventBus';
 import {
   getRecoveryActions,
   executeRecoveryAction,
-  getRecoveryContext,
-  incrementRecoveryAttempt,
   type RecoveryActionType,
 } from './actionRegistry';
+import { getRecoveryContext, incrementRecoveryAttempt } from './contextBuilder';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 

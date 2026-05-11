@@ -68,6 +68,9 @@ interface StartupSnapshot {
 
 let metrics: AppMetrics = createEmptyMetrics();
 
+// Init lock — prevents race between markStartupBegin and loadMetrics
+let initPromise: Promise<void> | null = null;
+
 // ─── Rolling history ──────────────────────────────────────────────────────
 
 const syncHistory: SyncMetric[] = [];
@@ -111,6 +114,7 @@ async function loadMetrics(): Promise<void> {
           timestamp: Date.now() - 1,
           startupTimeMs: parsed.startupTimeMs,
           droppedFrames: parsed.droppedFrames,
+          phases: {},
         };
         startupHistory.push(prevSession);
         if (startupHistory.length > MAX_STARTUP_HISTORY) startupHistory.shift();
@@ -153,7 +157,9 @@ let startupStartTime = 0;
 export function markStartupBegin(): void {
   startupStartTime = Date.now();
   metrics = createEmptyMetrics();
-  loadMetrics().catch(() => {}); // Non-blocking hydration
+  if (!initPromise) {
+    initPromise = loadMetrics().finally(() => { /* lock guard */ });
+  }
 }
 
 export async function markStartupComplete(phaseDurations?: Record<string, number>): Promise<void> {

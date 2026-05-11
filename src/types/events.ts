@@ -11,7 +11,7 @@
  *   {source}.{category}.{action}
  *   Examples: wearable.heartRate.detected, health.vitals.recorded, system.bootstrap.phase
  */
-import type { Event } from '../events/EventBus';
+import type { Event as RafiqEvent } from '../events/EventBus';
 
 // ─── Wearable Events ────────────────────────────────────────────────────────
 
@@ -317,61 +317,61 @@ export interface MonitoringRealtimeHealthPayload {
 
 export type RafiqDomainEvent =
   // Wearable
-  | Event<'wearable.connected', WearableConnectedPayload>
-  | Event<'wearable.disconnected', WearableDisconnectedPayload>
-  | Event<'wearable.heartRate', WearableHeartRatePayload>
-  | Event<'wearable.spo2', WearableSpO2Payload>
-  | Event<'wearable.bloodPressure', WearableBloodPressurePayload>
-  | Event<'wearable.temperature', WearableTemperaturePayload>
-  | Event<'wearable.steps', WearableStepsPayload>
-  | Event<'wearable.sleep', WearableSleepPayload>
-  | Event<'wearable.fallDetected', WearableFallDetectedPayload>
-  | Event<'wearable.batteryLow', WearableBatteryLowPayload>
-  | Event<'wearable.connectionStateChanged', { deviceId?: string; previous: string; current: string; attempt: number }>
+  | RafiqEvent<'wearable.connected', WearableConnectedPayload>
+  | RafiqEvent<'wearable.disconnected', WearableDisconnectedPayload>
+  | RafiqEvent<'wearable.heartRate', WearableHeartRatePayload>
+  | RafiqEvent<'wearable.spo2', WearableSpO2Payload>
+  | RafiqEvent<'wearable.bloodPressure', WearableBloodPressurePayload>
+  | RafiqEvent<'wearable.temperature', WearableTemperaturePayload>
+  | RafiqEvent<'wearable.steps', WearableStepsPayload>
+  | RafiqEvent<'wearable.sleep', WearableSleepPayload>
+  | RafiqEvent<'wearable.fallDetected', WearableFallDetectedPayload>
+  | RafiqEvent<'wearable.batteryLow', WearableBatteryLowPayload>
+  | RafiqEvent<'wearable.connectionStateChanged', { deviceId?: string; previous: string; current: string; attempt: number }>
 
   // Health
-  | Event<'health.vitalsRecorded', HealthVitalsRecordedPayload>
-  | Event<'health.abnormalReading', HealthAbnormalReadingPayload>
-  | Event<'health.emergencyTriggered', HealthEmergencyTriggeredPayload>
+  | RafiqEvent<'health.vitalsRecorded', HealthVitalsRecordedPayload>
+  | RafiqEvent<'health.abnormalReading', HealthAbnormalReadingPayload>
+  | RafiqEvent<'health.emergencyTriggered', HealthEmergencyTriggeredPayload>
 
   // Notifications
-  | Event<'notification.sent', NotificationSentPayload>
-  | Event<'notification.read', NotificationReadPayload>
-  | Event<'notification.delivered', NotificationDeliveredPayload>
-  | Event<'notification.failed', NotificationFailedPayload>
-  | Event<'notification.queueDepth', NotificationQueueDepthPayload>
+  | RafiqEvent<'notification.sent', NotificationSentPayload>
+  | RafiqEvent<'notification.read', NotificationReadPayload>
+  | RafiqEvent<'notification.delivered', NotificationDeliveredPayload>
+  | RafiqEvent<'notification.failed', NotificationFailedPayload>
+  | RafiqEvent<'notification.queueDepth', NotificationQueueDepthPayload>
 
   // Medication
-  | Event<'medication.taken', MedicationTakenPayload>
-  | Event<'medication.missed', MedicationMissedPayload>
-  | Event<'medication.lowStock', MedicationLowStockPayload>
-  | Event<'medication.refillDue', MedicationRefillDuePayload>
+  | RafiqEvent<'medication.taken', MedicationTakenPayload>
+  | RafiqEvent<'medication.missed', MedicationMissedPayload>
+  | RafiqEvent<'medication.lowStock', MedicationLowStockPayload>
+  | RafiqEvent<'medication.refillDue', MedicationRefillDuePayload>
 
   // Device
-  | Event<'device.gasAlert', DeviceGasAlertPayload>
-  | Event<'device.offline', DeviceOfflinePayload>
-  | Event<'device.online', DeviceOnlinePayload>
+  | RafiqEvent<'device.gasAlert', DeviceGasAlertPayload>
+  | RafiqEvent<'device.offline', DeviceOfflinePayload>
+  | RafiqEvent<'device.online', DeviceOnlinePayload>
 
   // Sync
-  | Event<'sync.started', SyncStartedPayload>
-  | Event<'sync.completed', SyncCompletedPayload>
-  | Event<'sync.failed', SyncFailedPayload>
+  | RafiqEvent<'sync.started', SyncStartedPayload>
+  | RafiqEvent<'sync.completed', SyncCompletedPayload>
+  | RafiqEvent<'sync.failed', SyncFailedPayload>
 
   // AI
-  | Event<'ai.insight', AIInsightPayload>
-  | Event<'ai.warning', AIWarningPayload>
-  | Event<'ai.recommendation', AIRecommendationPayload>
+  | RafiqEvent<'ai.insight', AIInsightPayload>
+  | RafiqEvent<'ai.warning', AIWarningPayload>
+  | RafiqEvent<'ai.recommendation', AIRecommendationPayload>
 
   // System
-  | Event<'app.bootstrapStart', AppBootstrapStartPayload>
-  | Event<'app.bootstrapPhase', AppBootstrapPhasePayload>
-  | Event<'app.bootstrapComplete', AppBootstrapCompletePayload>
-  | Event<'system.error', SystemErrorPayload>
-  | Event<'circuitBreaker.stateChange', CircuitBreakerStateChangePayload>
+  | RafiqEvent<'app.bootstrapStart', AppBootstrapStartPayload>
+  | RafiqEvent<'app.bootstrapPhase', AppBootstrapPhasePayload>
+  | RafiqEvent<'app.bootstrapComplete', AppBootstrapCompletePayload>
+  | RafiqEvent<'system.error', SystemErrorPayload>
+  | RafiqEvent<'circuitBreaker.stateChange', CircuitBreakerStateChangePayload>
 
   // Monitoring
-  | Event<'monitoring.startup', MonitoringStartupPayload>
-  | Event<'monitoring.frames', MonitoringFramesPayload>
-  | Event<'monitoring.syncSlow', MonitoringSyncSlowPayload>
-  | Event<'monitoring.bleUnstable', MonitoringBLEUnstablePayload>
-  | Event<'monitoring.realtimeHealth', MonitoringRealtimeHealthPayload>;
+  | RafiqEvent<'monitoring.startup', MonitoringStartupPayload>
+  | RafiqEvent<'monitoring.frames', MonitoringFramesPayload>
+  | RafiqEvent<'monitoring.syncSlow', MonitoringSyncSlowPayload>
+  | RafiqEvent<'monitoring.bleUnstable', MonitoringBLEUnstablePayload>
+  | RafiqEvent<'monitoring.realtimeHealth', MonitoringRealtimeHealthPayload>;

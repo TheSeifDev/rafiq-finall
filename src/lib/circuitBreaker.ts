@@ -153,7 +153,8 @@ export class CircuitBreaker {
   getBackoffDelay(): number {
     const failures = this.getFailureCount();
     if (failures === 0) return this.config.baseDelayMs;
-    return Math.min(this.config.baseDelayMs * Math.pow(2, failures), this.config.maxDelayMs);
+    const jitter = 0.85 + Math.random() * 0.3; // 0.85–1.15 multiplier — prevents thundering herd
+    return Math.min(this.config.baseDelayMs * Math.pow(2, failures) * jitter, this.config.maxDelayMs);
   }
 
   getStats(): {

@@ -18,11 +18,11 @@ export function getRecoveryContext(partial?: Partial<RecoveryContext>): Recovery
 
   const ctx: RecoveryContext = {
     attemptCount: recoveryAttemptCount,
-    isAuthenticated: !!authState.session?.user.id,
+    isAuthenticated: !!(authState.session?.user?.id),
     componentName: partial?.componentName,
     error: partial?.error,
-    sessionId: authState.session?.id,
-    userId: authState.session?.user.id,
+    sessionId: authState.session?.user?.id,
+    userId: authState.session?.user?.id,
   };
 
   return ctx;

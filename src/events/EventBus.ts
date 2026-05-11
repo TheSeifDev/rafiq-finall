@@ -21,13 +21,34 @@ export type EventBus = {
   listenerCountWildcard(pattern: string): number;
 };
 
-export type Event<T extends Record<string, unknown> = Record<string, unknown>> = {
+export type Event<
+  T extends Record<string, unknown> = Record<string, unknown>,
+> = {
   type: string;
   source: EventSource;
   timestamp: number;
   payload: T;
   metadata?: EventMetadata;
 };
+
+// Domain event alias — maps2-type to 1-type form cleanly
+export type RafiqDomainEvent<
+  Type extends string,
+  Payload extends Record<string, unknown> = Record<string, unknown>,
+> = {
+  type: Type;
+  source: EventSource;
+  timestamp: number;
+  payload: Payload;
+  metadata?: EventMetadata;
+};
+
+// Type alias for domain events — maps2-type to 1-type form
+// Re-exports as RafiqEvent so domain events module can use a distinct name
+export type RafiqEvent<
+  Type extends string,
+  Payload extends Record<string, unknown> = Record<string, unknown>,
+> = Event<Payload>;
 
 export type EventSource = 'wearable' | 'backend' | 'local' | 'ai' | 'system' | 'manual';
 
@@ -166,11 +187,15 @@ export function createEventBus(): EventBus {
         }
 
         if (entry.once) {
-          const wEntries = wildcardListeners.get(pattern);
-          if (wEntries) {
-            const idx = wEntries.indexOf(entry);
-            if (idx !== -1) wEntries.splice(idx, 1);
-          }
+          wildcardSnapshot.forEach(({ entry: e2, pattern: p2 }) => {
+            if (e2 === entry) {
+              const wEntries = wildcardListeners.get(p2);
+              if (wEntries) {
+                const idx = wEntries.indexOf(entry);
+                if (idx !== -1) wEntries.splice(idx, 1);
+              }
+            }
+          });
         }
       }
     },

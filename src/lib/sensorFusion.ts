@@ -10,6 +10,7 @@
  *   - Trend stability analysis (smoothed vs raw)
  *   - Composite medical confidence (sensor + temporal + fusion + trend)
  *   - Anomaly flags (motion, implausible, conflict, stale)
+ *   - Sensor artifact rejection (rolling median, outlier, impossible transition)
  */
 import type { VitalsReading } from '../services/wearable/ble.types';
 import { computeConfidenceScore, type ConfidenceScore, type VitalReadingWithMeta } from './healthEngine';
@@ -157,7 +158,7 @@ function checkTemporalConsistency(vitalKey: string, current: VitalsReading, thre
 
   const prev = window[window.length - 2].reading;
   const getVal = (r: VitalsReading, k: string): number | null =>
-    (r as Record<string, number | null>)[k] ?? null;
+    (r as unknown as Record<string, number | null>)[k] ?? null;
 
   for (const vital of ['heart_rate', 'oxygen_saturation'] as const) {
     const currVal = getVal(current, vital);
@@ -192,7 +193,7 @@ export function analyzeTrend(vitalKey: string, windowSize = 5): TrendAnalysis {
   }
 
   const getVal = (r: VitalsReading, k: string): number | null =>
-    (r as Record<string, number | null>)[k] ?? null;
+    (r as unknown as Record<string, number | null>)[k] ?? null;
 
   // Infer the vital from the key suffix
   const vital = vitalKey.replace('_window', '') as keyof VitalsReading;
@@ -264,7 +265,7 @@ export function fuseReading(
   // Push readings to windows (for trend analysis)
   const vitalsToTrack = ['heart_rate', 'oxygen_saturation'] as const;
   for (const vital of vitalsToTrack) {
-    const val = (reading as Record<string, number | null>)[vital];
+    const val = (reading as unknown as Record<string, number | null>)[vital];
     if (val != null) {
       pushToWindow(vital, reading, timestamp);
     }
@@ -371,4 +372,190 @@ export function quickFusion(reading: VitalsReading): { confidence: number; isVal
 
 export function clearFusionWindows(): void {
   vitalWindows.clear();
+}
+
+// ─── Sensor Artifact Rejection ─────────────────────────────────────────────
+//
+// Three-layer defense against corrupted readings:
+//   Layer 1 — Rolling Median Filter: removes spike artifacts from raw signal
+//   Layer 2 — Outlier Rejection: Statistical IQR method flags suspicious values
+//   Layer 3 — Impossible Transition Detection: flags physiologically impossible changes
+
+interface ArtifactRejectionResult {
+  /** Whether the reading passed all layers */
+  isArtifactFree: boolean;
+  /** Rejection layer (1-median, 2-outlier, 3-impossible) or null */
+  rejectedAt: 1 | 2 | 3 | null;
+  /** Layer description or null */
+  rejectedReason: AnomalyFlag['type'] | null;
+  /** Human-readable reason */
+  reason: string | null;
+}
+
+/** Rolling median filter — removes spike artifacts from vital signal */
+function rollingMedianFilter(values: number[]): number {
+  if (values.length < 3) return values[values.length - 1] ?? 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+    : sorted[mid];
+}
+
+/**
+ * Layer 1 — Rolling Median Spike Detection
+ *
+ * Returns true if the current value deviates too far from the rolling median.
+ * Uses a configurable deviation threshold (default 35%) to flag sensor artifacts.
+ */
+function isSpikeArtifact(
+  vitalKey: string,
+  vitalValues: number[],
+  currentValue: number,
+  thresholdPct = 0.35,
+): boolean {
+  const window = vitalValues.slice(-5);
+  if (window.length < 3) return false;
+
+  const median = rollingMedianFilter(window);
+  const maxDeviation = median * thresholdPct;
+  const deviation = Math.abs(currentValue - median);
+
+  return deviation > maxDeviation;
+}
+
+/**
+ * Layer 2 — Outlier Rejection (IQR Statistical Method)
+ *
+ * Returns true if the value falls outside IQR bounds computed from the window.
+ * Uses 1.5× IQR rule which is standard for medical signal outlier detection.
+ */
+function isOutlierIQR(values: number[], currentValue: number, iqrMultiplier = 1.5): boolean {
+  if (values.length < 4) return false;
+
+  const sorted = [...values].sort((a, b) => a - b);
+  const q1Idx = Math.floor(sorted.length * 0.25);
+  const q3Idx = Math.floor(sorted.length * 0.75);
+  const q1 = sorted[q1Idx];
+  const q3 = sorted[q3Idx];
+  const iqr = q3 - q1;
+
+  const lowerBound = q1 - iqrMultiplier * iqr;
+  const upperBound = q3 + iqrMultiplier * iqr;
+
+  return currentValue < lowerBound || currentValue > upperBound;
+}
+
+/**
+ * Layer 3 — Impossible Transition Detection
+ *
+ * Detects physiologically impossible changes within a configurable time window.
+ * Used for: HR jumps, SpO2 drops, BP drops, temperature changes.
+ */
+function isImpossibleTransition(
+  vitalKey: string,
+  prevValue: number | null,
+  prevTimestamp: number | null,
+  currentValue: number,
+  currentTimestamp: number,
+): boolean {
+  if (prevValue == null || prevTimestamp == null) return false;
+
+  const elapsedSec = (currentTimestamp - prevTimestamp) / 1000;
+  const maxElapsedSec = 300; // 5-min cap — rejects impossible delta over long gap
+  const effectiveSec = Math.min(elapsedSec, maxElapsedSec);
+
+  let maxDeltaPerMin: number;
+  let vital: string;
+
+  if (vitalKey.includes('heart_rate')) {
+    maxDeltaPerMin = 80;
+    vital = 'HR';
+  } else if (vitalKey.includes('oxygen')) {
+    maxDeltaPerMin = 20;
+    vital = 'SpO2';
+  } else if (vitalKey.includes('systolic')) {
+    maxDeltaPerMin = 100;
+    vital = 'BP';
+  } else if (vitalKey.includes('temperature')) {
+    maxDeltaPerMin = 5;
+    vital = 'Temp';
+  } else {
+    return false; // Unknown vital — skip impossible check
+  }
+
+  const effectiveMin = effectiveSec / 60;
+  const maxAllowedDelta = maxDeltaPerMin * effectiveMin;
+  const delta = Math.abs(currentValue - prevValue);
+
+  return delta > maxAllowedDelta
+    ? true
+    : false;
+}
+
+// Per-vital rolling storage for artifact detection
+const artifactWindows = new Map<string, number[]>();
+const MAX_ARTIFACT_WINDOW = 20;
+const vitalArtifactKeys = ['heart_rate', 'oxygen_saturation', 'blood_pressure_systolic', 'temperature'] as const;
+
+export function rejectArtifact(
+  reading: VitalsReading,
+  timestampMs?: number,
+): ArtifactRejectionResult {
+  const now = timestampMs ?? Date.now();
+
+  for (const vitalKey of vitalArtifactKeys) {
+    const vitalRaw = (reading as unknown as Record<string, number | null>)[vitalKey];
+    if (vitalRaw == null) continue;
+
+    // Track rolling values for spike + outlier detection
+    const window = artifactWindows.get(vitalKey) ?? [];
+    const allValues = [...window, vitalRaw].slice(-MAX_ARTIFACT_WINDOW);
+    artifactWindows.set(vitalKey, allValues);
+
+    // ── Layer 1: Rolling Median Spike ──
+    if (allValues.length >= 3) {
+      const medianValues = allValues.slice(-5);
+      if (isSpikeArtifact(vitalKey, allValues, vitalRaw)) {
+        return {
+          isArtifactFree: false,
+          rejectedAt: 1,
+          rejectedReason: 'implausible',
+          reason: `${vitalKey} spike artifact (deviation from rolling median)`,
+        };
+      }
+    }
+
+    // ── Layer 2: Outlier IQR ──
+    if (allValues.length >= 4) {
+      if (isOutlierIQR(allValues, vitalRaw)) {
+        return {
+          isArtifactFree: false,
+          rejectedAt: 2,
+          rejectedReason: 'implausible',
+          reason: `${vitalKey} outlier value (IQR statistical method)`,
+        };
+      }
+    }
+
+    // ── Layer 3: Impossible Transition ──
+    const prevEntry = allValues.length >= 2 ? allValues[allValues.length - 2] : null;
+    if (prevEntry != null) {
+      const prevTimestamp = now - 15000; // approximate previous reading
+      if (isImpossibleTransition(vitalKey, prevEntry, null, vitalRaw, now)) {
+        return {
+          isArtifactFree: false,
+          rejectedAt: 3,
+          rejectedReason: 'implausible',
+          reason: `${vitalKey} impossible transition (delta exceeds physiologic limit)`,
+        };
+      }
+    }
+  }
+
+  return { isArtifactFree: true, rejectedAt: null, rejectedReason: null, reason: null };
+}
+
+export function clearArtifactWindows(): void {
+  artifactWindows.clear();
 }

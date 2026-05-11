@@ -1,30 +1,28 @@
 /**
- * RAFIQ Bootstrap Orchestrator — with Dependency Graph Validation
+ * RAFIQ Bootstrap Orchestrator — Dependency-Graph-Validated Startup
  *
- * Deterministic startup sequence with health checks:
+ * Deterministic startup with dependency graph validation:
  *
- * Phase 1 — Foundation
- *   ├─ Storage: AsyncStorage hydration
- *   ├─ Permissions: Notification + Location check
+ *   Phase 1 — Foundation
+ *     Storage: AsyncStorage hydration
+ *     Permissions: Notification + Location
  *
- * Phase 2 — Realtime & Wearable
- *   ├─ Queue: Notification queue restore/replay
- *   ├─ Realtime: Supabase channel subscriptions
- *   └─ Wearable: BLE adapter restore
+ *   Phase 2 — Realtime & Wearable
+ *     Queue: Notification queue restore/replay
+ *     Realtime: Supabase channel subscriptions
+ *     Wearable: BLE adapter restore
  *
- * Phase 3 — Application
- *   ├─ Navigation: Screen pre-warming
- *   ├─ Health checks: Vital service sanity
- *   └─ Monitoring: Performance hooks init
+ *   Phase 3 — Application
+ *     Navigation: Screen pre-warming
+ *     Health checks: Vital service sanity
+ *     Monitoring: Performance hooks init
  *
  * Dependency validation:
- *   - Startup dependency verification
- *   - Timeout protection (configurable per phase)
- *   - Circular dependency detection (compile-time)
- *   - Phase skip on unmet dependencies
- *
- * Each phase awaits the previous before proceeding.
- * Failed steps are skipped with warnings — app proceeds.
+ *   - Proper Kahn topological sort (dep → dependents model)
+ *   - Cycle detection via DFS
+ *   - Missing dependency detection
+ *   - Timeout protection per phase
+ *   - Critical phase cascade blocking
  */
 import { supabase } from '../lib/supabase';
 import { eventBus } from '../events/EventBus';
@@ -67,15 +65,11 @@ export interface PhaseResult {
 
 export interface BootstrapPhaseDefinition {
   key: BootstrapPhase;
-  /** Human-readable label */
   label: string;
-  /** Timeout for this phase (ms). Default 10s */
   timeoutMs: number;
-  /** Phase keys that must complete before this one */
+  /** Phase keys that must complete before this one starts */
   dependsOn: BootstrapPhase[];
-  /** The phase function */
   fn: () => Promise<unknown>;
-  /** Whether to continue on failure */
   critical: boolean;
 }
 
@@ -87,7 +81,7 @@ export interface DependencyGraphValidation {
   executionOrder: BootstrapPhase[];
 }
 
-// ─── Phase Definitions ────────────────────────────────────────────────────
+// ─── Phase Functions ───────────────────────────────────────────────────────
 
 async function phaseStorage(): Promise<void> {
   const language = useAppStore.getState().language;
@@ -140,9 +134,7 @@ async function phaseWearable(): Promise<{ connected: boolean; deviceId?: string 
 }
 
 async function phaseNavigation(): Promise<void> {
-  try {
-    const { useNavigationContainerRef } = await import('../navigation/NavigationContainer');
-  } catch { /* ignore */ }
+  // Navigation pre-warming — React Navigation auto-initializes
 }
 
 async function phaseHealthChecks(): Promise<{ issues: string[] }> {
@@ -165,20 +157,20 @@ async function phaseMonitoring(): Promise<void> {
 }
 
 const PHASE_DEFINITIONS: BootstrapPhaseDefinition[] = [
-  { key: 'storage',       label: 'Storage Hydration',  timeoutMs: 8_000,  dependsOn: [],                       fn: phaseStorage,        critical: false },
-  { key: 'permissions',  label: 'Permissions',        timeoutMs: 5_000,  dependsOn: ['storage'],              fn: phasePermissions,   critical: false },
-  { key: 'queue',        label: 'Queue Restore',      timeoutMs: 10_000, dependsOn: ['storage'],              fn: phaseQueue,          critical: false },
-  { key: 'realtime',     label: 'Supabase Realtime',   timeoutMs: 15_000, dependsOn: ['permissions'],          fn: phaseRealtime,       critical: false },
-  { key: 'wearable',     label: 'Wearable',            timeoutMs: 10_000, dependsOn: ['permissions', 'queue'], fn: phaseWearable,    critical: false },
-  { key: 'navigation',   label: 'Navigation',          timeoutMs: 5_000,  dependsOn: ['permissions'],          fn: phaseNavigation,     critical: false },
-  { key: 'health_checks',label: 'Health Checks',        timeoutMs: 8_000,  dependsOn: ['realtime', 'wearable'], fn: phaseHealthChecks,   critical: false },
-  { key: 'monitoring',   label: 'Monitoring',          timeoutMs: 5_000,  dependsOn: ['storage'],              fn: phaseMonitoring,      critical: false },
+  { key: 'storage',       label: 'Storage Hydration',  timeoutMs: 8_000,  dependsOn: [],                        fn: phaseStorage,        critical: false },
+  { key: 'permissions',  label: 'Permissions',        timeoutMs: 5_000,  dependsOn: ['storage'],               fn: phasePermissions,   critical: false },
+  { key: 'queue',        label: 'Queue Restore',      timeoutMs: 10_000, dependsOn: ['storage'],               fn: phaseQueue,          critical: false },
+  { key: 'realtime',    label: 'Supabase Realtime',   timeoutMs: 15_000, dependsOn: ['permissions'],           fn: phaseRealtime,       critical: false },
+  { key: 'wearable',   label: 'Wearable',           timeoutMs: 10_000, dependsOn: ['permissions', 'queue'],     fn: phaseWearable,      critical: false },
+  { key: 'navigation', label: 'Navigation',          timeoutMs: 5_000,  dependsOn: ['permissions'],           fn: phaseNavigation,    critical: false },
+  { key: 'health_checks', label: 'Health Checks',    timeoutMs: 8_000,  dependsOn: ['realtime', 'wearable'], fn: phaseHealthChecks,  critical: false },
+  { key: 'monitoring',  label: 'Monitoring',         timeoutMs: 5_000,  dependsOn: ['storage'],               fn: phaseMonitoring,    critical: false },
 ];
 
 // ─── Dependency Graph Validation ───────────────────────────────────────────
 
 function validateDependencyGraph(
-  phases: BootstrapPhaseDefinition[]
+  phases: BootstrapPhaseDefinition[],
 ): DependencyGraphValidation {
   const result: DependencyGraphValidation = {
     isValid: true,
@@ -188,12 +180,9 @@ function validateDependencyGraph(
     executionOrder: [],
   };
 
-  // ── Build adjacency map ──
-  const phaseMap = new Map(phases.map(p => [p.key, p]));
-  const adj = new Map<BootstrapPhase, Set<BootstrapPhase>>();
-  for (const p of phases) {
-    adj.set(p.key, new Set(p.dependsOn));
-  }
+  const phaseMap = new Map<BootstrapPhase, BootstrapPhaseDefinition>(
+    phases.map(p => [p.key, p])
+  );
 
   // ── Check for missing dependencies ──
   for (const p of phases) {
@@ -205,21 +194,33 @@ function validateDependencyGraph(
     }
   }
 
-  // ── Circular dependency detection (DFS-based) ──
+  // ── Build reverse adjacency: dependency → its dependents ──
+  // This is the key fix: we need to know "who depends on me" for Kahn's algorithm
+  const dependents = new Map<BootstrapPhase, BootstrapPhase[]>();
+  for (const p of phases) {
+    dependents.set(p.key, []);
+  }
+  for (const p of phases) {
+    for (const dep of p.dependsOn) {
+      const list = dependents.get(dep);
+      if (list) list.push(p.key);
+    }
+  }
+
+  // ── DFS cycle detection ──
   const WHITE = 0, GRAY = 1, BLACK = 2;
   const colors = new Map<BootstrapPhase, number>();
   for (const p of phases) colors.set(p.key, WHITE);
-
   const cycleDetected: BootstrapPhase[][] = [];
 
   function dfs(node: BootstrapPhase, path: BootstrapPhase[]): boolean {
     colors.set(node, GRAY);
     path.push(node);
 
-    const deps = adj.get(node) ?? new Set();
+    const deps = phaseMap.get(node)?.dependsOn ?? [];
     for (const dep of deps) {
+      if (!phaseMap.has(dep)) continue; // already reported as missing
       if (colors.get(dep) === GRAY) {
-        // Found a cycle
         const cycleStart = path.indexOf(dep);
         const cycle = path.slice(cycleStart);
         cycleDetected.push(cycle);
@@ -240,28 +241,20 @@ function validateDependencyGraph(
     }
   }
 
-  // Convert to readable format
   result.circularDeps = cycleDetected.map(cycle => ({
     phases: cycle,
     path: cycle.map(p => p).join(' → '),
   }));
+  if (cycleDetected.length > 0) result.isValid = false;
 
-  if (cycleDetected.length > 0) {
-    result.isValid = false;
-  }
-
-  // ── Topological sort for execution order ──
-  // Kahn's algorithm
+  // ── Kahn's topological sort ──
+  // inDegree[phase] = number of deps this phase has
   const inDegree = new Map<BootstrapPhase, number>();
   for (const p of phases) {
-    inDegree.set(p.key, 0);
-  }
-  for (const p of phases) {
-    for (const dep of p.dependsOn) {
-      inDegree.set(p.key, (inDegree.get(p.key) ?? 0) + 1);
-    }
+    inDegree.set(p.key, p.dependsOn.filter(d => phaseMap.has(d)).length);
   }
 
+  // Queue: phases with no unmet dependencies
   const queue: BootstrapPhase[] = [];
   for (const [phase, degree] of inDegree) {
     if (degree === 0) queue.push(phase);
@@ -270,15 +263,17 @@ function validateDependencyGraph(
   while (queue.length > 0) {
     const curr = queue.shift()!;
     result.executionOrder.push(curr);
-    const deps = adj.get(curr) ?? new Set();
-    for (const dep of deps) {
+
+    // Decrement in-degree of all phases that depend on curr
+    const myDependents = dependents.get(curr) ?? [];
+    for (const dep of myDependents) {
       const newDegree = (inDegree.get(dep) ?? 1) - 1;
       inDegree.set(dep, newDegree);
       if (newDegree === 0) queue.push(dep);
     }
   }
 
-  // If execution order doesn't include all phases, there are cycles
+  // Any phase not in executionOrder has unmet dependencies (cycle)
   if (result.executionOrder.length !== phases.length) {
     result.isValid = false;
     for (const p of phases) {
@@ -291,7 +286,7 @@ function validateDependencyGraph(
   return result;
 }
 
-// ─── Run validation at module load ────────────────────────────────────────
+// ─── Validate at module load ───────────────────────────────────────────────
 
 const VALIDATION = validateDependencyGraph(PHASE_DEFINITIONS);
 
@@ -306,15 +301,21 @@ if (!VALIDATION.isValid) {
   }
 }
 
-// ─── Phase execution with timeout ───────────────────────────────────────────
+// ─── Build execution order from validation ─────────────────────────────────
+
+const EXECUTION_ORDER = VALIDATION.executionOrder;
+const PHASE_MAP = new Map<BootstrapPhase, BootstrapPhaseDefinition>(
+  PHASE_DEFINITIONS.map(p => [p.key, p])
+);
+
+// ─── Phase executor ────────────────────────────────────────────────────────
 
 async function runPhaseWithTimeout(
   phase: BootstrapPhaseDefinition,
-  completedPhases: Set<BootstrapPhase>
+  completedPhases: Set<BootstrapPhase>,
 ): Promise<PhaseResult> {
   const startTime = Date.now();
 
-  // Check dependencies
   for (const dep of phase.dependsOn) {
     if (!completedPhases.has(dep)) {
       return {
@@ -325,38 +326,35 @@ async function runPhaseWithTimeout(
     }
   }
 
-  // Run with timeout race
   const timeoutMs = phase.timeoutMs;
+  let timedOut = false;
 
   try {
     const result = await Promise.race([
       phase.fn(),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Phase "${phase.key}" timed out after ${timeoutMs}ms`)), timeoutMs)
+        setTimeout(() => {
+          timedOut = true;
+          reject(new Error(`Phase "${phase.key}" timed out after ${timeoutMs}ms`));
+        }, timeoutMs)
       ),
     ]);
-
-    return {
-      status: 'done',
-      durationMs: Date.now() - startTime,
-    };
+    return { status: 'done', durationMs: Date.now() - startTime };
   } catch (err: any) {
-    const isTimeout = err?.message?.includes('timed out');
     return {
-      status: isTimeout ? 'timed_out' : 'failed',
+      status: timedOut ? 'timed_out' : 'failed',
       error: err?.message ?? 'Unknown error',
       durationMs: Date.now() - startTime,
-      timeoutMs: isTimeout ? timeoutMs : undefined,
+      timeoutMs: timedOut ? timeoutMs : undefined,
     };
   }
 }
 
-// ─── Orchestrator ────────────────────────────────────────────────────────────
+// ─── Orchestrator ────────────────────────────────────────────────────────
 
 export async function bootstrapApp(fallbackLanguage: AppLanguage = 'ar'): Promise<BootstrapResult> {
-  // ── Validate graph before running ──
   if (!VALIDATION.isValid) {
-    console.warn('[Bootstrap] Dependency graph has issues — continuing anyway');
+    console.warn('[Bootstrap] Dependency graph has issues — continuing');
   }
 
   const startTime = Date.now();
@@ -364,73 +362,75 @@ export async function bootstrapApp(fallbackLanguage: AppLanguage = 'ar'): Promis
   const skippedDeps: string[] = [];
 
   const phases: Record<BootstrapPhase, PhaseResult> = {
-    init:          { status: 'done', durationMs: 0 },
-    storage:       { status: 'pending', durationMs: 0 },
-    permissions:   { status: 'pending', durationMs: 0 },
-    queue:         { status: 'pending', durationMs: 0 },
-    realtime:      { status: 'pending', durationMs: 0 },
+    init:           { status: 'done', durationMs: 0 },
+    storage:        { status: 'pending', durationMs: 0 },
+    permissions:    { status: 'pending', durationMs: 0 },
+    queue:          { status: 'pending', durationMs: 0 },
+    realtime:       { status: 'pending', durationMs: 0 },
     wearable:      { status: 'pending', durationMs: 0 },
-    navigation:    { status: 'pending', durationMs: 0 },
+    navigation:     { status: 'pending', durationMs: 0 },
     health_checks:  { status: 'pending', durationMs: 0 },
-    monitoring:    { status: 'pending', durationMs: 0 },
-    complete:      { status: 'pending', durationMs: 0 },
+    monitoring:     { status: 'pending', durationMs: 0 },
+    complete:       { status: 'pending', durationMs: 0 },
   };
 
-  // Emit bootstrap start event
   eventBus.emit({
     type: 'app.bootstrapStart',
     source: 'system',
     timestamp: Date.now(),
-    payload: { fallbackLanguage, isColdStart: true, circularDeps: VALIDATION.circularDeps.map(d => d.path) },
+    payload: {
+      fallbackLanguage,
+      isColdStart: true,
+      circularDeps: VALIDATION.circularDeps.map(d => d.path),
+      executionOrder: EXECUTION_ORDER,
+    },
     metadata: { severity: 'low', category: 'system' },
   });
 
-  // Run phases in order defined in PHASE_DEFINITIONS
-  // (which respects the topological sort order)
-  for (const phaseDef of PHASE_DEFINITIONS) {
+  // ── Execute in Kahn topological order ──
+  for (const phaseKey of EXECUTION_ORDER) {
+    const phaseDef = PHASE_MAP.get(phaseKey)!;
     const result = await runPhaseWithTimeout(phaseDef, completedPhases);
-    phases[phaseDef.key] = result;
+    phases[phaseKey] = result;
 
     if (result.status === 'skipped') {
-      skippedDeps.push(`${phaseDef.key}: ${result.error}`);
-      // Still emit event so monitoring knows this was skipped
+      skippedDeps.push(`${phaseKey}: ${result.error}`);
       eventBus.emit({
         type: 'app.bootstrapPhase',
         source: 'system',
         timestamp: Date.now(),
-        payload: { phase: phaseDef.key, status: 'skipped', error: result.error, durationMs: result.durationMs },
+        payload: { phase: phaseKey, status: 'skipped', error: result.error, durationMs: result.durationMs },
         metadata: { severity: 'low', category: 'system' },
       });
     } else if (result.status === 'done') {
-      completedPhases.add(phaseDef.key);
+      completedPhases.add(phaseKey);
       eventBus.emit({
         type: 'app.bootstrapPhase',
         source: 'system',
         timestamp: Date.now(),
-        payload: { phase: phaseDef.key, status: 'done', durationMs: result.durationMs },
+        payload: { phase: phaseKey, status: 'done', durationMs: result.durationMs },
       });
     } else {
-      // failed or timed_out — emit error event
+      // failed or timed_out
       eventBus.emit({
         type: 'app.bootstrapPhase',
         source: 'system',
         timestamp: Date.now(),
-        payload: { phase: phaseDef.key, status: result.status, error: result.error, durationMs: result.durationMs, timeoutMs: result.timeoutMs },
+        payload: { phase: phaseKey, status: result.status, error: result.error, durationMs: result.durationMs, timeoutMs: result.timeoutMs },
         metadata: { severity: phaseDef.critical ? 'high' : 'medium', category: 'system' },
       });
 
-      // Only skip subsequent phases if this was critical
+      // Cascade block if critical
       if (phaseDef.critical) {
-        // Mark all phases that depend on this one as skipped
-        for (const later of PHASE_DEFINITIONS) {
-          if (later.dependsOn.includes(phaseDef.key) && !completedPhases.has(later.key)) {
-            phases[later.key] = { status: 'skipped', error: `Blocked by failed phase: ${phaseDef.key}`, durationMs: 0 };
-            skippedDeps.push(`${later.key}: blocked by ${phaseDef.key}`);
+        for (const [laterKey, laterDef] of PHASE_MAP) {
+          if (laterDef.dependsOn.includes(phaseKey) && !completedPhases.has(laterKey)) {
+            phases[laterKey] = { status: 'skipped', error: `Blocked by critical phase: ${phaseKey}`, durationMs: 0 };
+            skippedDeps.push(`${laterKey}: blocked by ${phaseKey}`);
             eventBus.emit({
               type: 'app.bootstrapPhase',
               source: 'system',
               timestamp: Date.now(),
-              payload: { phase: later.key, status: 'skipped', error: `Blocked by ${phaseDef.key}`, durationMs: 0 },
+              payload: { phase: laterKey, status: 'skipped', error: `Blocked by ${phaseKey}`, durationMs: 0 },
             });
           }
         }
@@ -468,7 +468,7 @@ export async function bootstrapApp(fallbackLanguage: AppLanguage = 'ar'): Promis
   };
 }
 
-// ─── Convenience ────────────────────────────────────────────────────────────
+// ─── Convenience ──────────────────────────────────────────────────────────
 
 export function getBootstrapValidation(): DependencyGraphValidation {
   return VALIDATION;

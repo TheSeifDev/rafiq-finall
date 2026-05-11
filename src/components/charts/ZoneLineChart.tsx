@@ -136,6 +136,17 @@ export function ZoneLineChart({
     return <View style={{ height }} />;
   }
 
+  // ── Point decimation (50-max strategy) to keep renders smooth ──
+  const decimatedChartData = useMemo(() => {
+    if (chartData.datasets[0].data.length <= 50) return chartData;
+    const step = Math.ceil(chartData.datasets[0].data.length / 50);
+    const decimatedData = chartData.datasets[0].data.filter((_, i) => i % step === 0);
+    return {
+      labels: chartData.labels.filter((_, i) => i % step === 0),
+      datasets: [{ data: decimatedData }],
+    };
+  }, [chartData.datasets[0].data.length, chartData.labels.length]);
+
   const graphTop = 40;
   const graphHeight = height - 60;
   const zoneHeight = graphHeight / activeZones.length;
@@ -146,8 +157,8 @@ export function ZoneLineChart({
       {showZones && (
         <View style={[StyleSheet.absoluteFill, { height, width: CHART_W }]}>
           {activeZones.map((zone, i) => {
-            const minVal = chartData.datasets[0].data.reduce((a, b) => Math.min(a, b), Infinity);
-            const maxVal = chartData.datasets[0].data.reduce((a, b) => Math.max(a, b), -Infinity);
+            const minVal = decimatedChartData.datasets[0].data.reduce((a, b) => Math.min(a, b), Infinity);
+            const maxVal = decimatedChartData.datasets[0].data.reduce((a, b) => Math.max(a, b), -Infinity);
             const range = maxVal - minVal || 1;
             const zoneMinY = graphTop + graphHeight - ((zone.max - minVal) / range) * graphHeight;
             const zoneMaxY = graphTop + graphHeight - ((zone.min - minVal) / range) * graphHeight;
@@ -166,7 +177,7 @@ export function ZoneLineChart({
 
       {/* Chart */}
       <LineChart
-        data={chartData}
+        data={decimatedChartData}
         width={CHART_W}
         height={height}
         chartConfig={chartConfig}
