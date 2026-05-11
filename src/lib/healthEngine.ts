@@ -1,12 +1,13 @@
 /**
- * Health Engine — Vital Status Classification
+ * Health Engine — Vital Status Classification + Medical Confidence Scoring
  *
  * Architecture:
- *   Sensor Data → HealthEngine.analyze() → Status + Anomaly + Emergency
+ *   Sensor Data → HealthEngine.analyze() → Status + Anomaly + Emergency + Confidence
  *
  * All vitals are classified into status ranges.
  * Anomalies track consecutive abnormal readings.
  * Emergency thresholds trigger critical alerts.
+ * Confidence scoring weights sensor reliability, temporal freshness, and artifact detection.
  */
 import type { VitalsReading } from '../services/wearable/ble.types';
 
@@ -29,6 +30,166 @@ export interface HealthAnalysis {
   anomalyCount: number;
   isEmergency: boolean;
   emergencyType?: string;
+  confidence: ConfidenceScore;
+}
+
+// ─── Confidence Scoring ─────────────────────────────────────────────
+
+export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'unknown';
+
+export interface ConfidenceScore {
+  overall: number; // 0-100
+  level: ConfidenceLevel;
+  sensorReliability: number;  // 0-100: based on signal quality, battery level
+  temporalFreshness: number;  // 0-100: based on data age (fresh = high confidence)
+  artifactScore: number;      // 0-100: based on motion/stability artifacts
+  isStale: boolean;
+  reasons: string[];          // Human-readable reasons for reduced confidence
+}
+
+export interface VitalReadingWithMeta extends VitalsReading {
+  /** BLE RSSI signal strength in dBm */
+  signalStrength?: number;
+  /** Device-reported motion artifact during reading */
+  hasMotionArtifact?: boolean;
+  /** Device-reported battery level (0-100) */
+  batteryLevel?: number;
+}
+
+export function computeConfidenceScore(reading: VitalReadingWithMeta): ConfidenceScore {
+  const reasons: string[] = [];
+  let sensorReliability = 100;
+  let temporalFreshness = 100;
+  let artifactScore = 100;
+
+  // ── Sensor reliability (battery + signal strength) ──
+  if (reading.batteryLevel != null && reading.batteryLevel < 20) {
+    sensorReliability -= 30;
+    reasons.push('Low battery may affect sensor accuracy');
+  } else if (reading.batteryLevel != null && reading.batteryLevel < 40) {
+    sensorReliability -= 10;
+  }
+
+  if (reading.signalStrength != null) {
+    if (reading.signalStrength < -70) {
+      sensorReliability -= 30;
+      reasons.push('Weak BLE signal may cause data gaps');
+    } else if (reading.signalStrength < -50) {
+      sensorReliability -= 10;
+    }
+  }
+
+  if (reading.is_simulated ?? false) {
+    sensorReliability -= 20;
+    reasons.push('Simulated data — production confidence reduced');
+  }
+
+  sensorReliability = Math.max(0, sensorReliability);
+
+  // ── Temporal freshness ──
+  const now = Date.now();
+  const age = reading.timestamp ? now - reading.timestamp : Infinity;
+
+  if (age === Infinity || !reading.timestamp) {
+    temporalFreshness = 0;
+    reasons.push('Missing timestamp — data age unknown');
+  } else if (age > 30 * 60 * 1000) {
+    temporalFreshness = 0;
+    reasons.push('Reading is stale (>30 min old)');
+  } else if (age > 15 * 60 * 1000) {
+    temporalFreshness = 30;
+    reasons.push('Reading is older than 15 minutes');
+  } else if (age > 5 * 60 * 1000) {
+    temporalFreshness = 70;
+    reasons.push('Reading is moderately fresh');
+  }
+
+  // ── Artifact score ──
+  if (reading.hasMotionArtifact) {
+    artifactScore -= 50;
+    reasons.push('Motion artifact detected during measurement');
+  }
+
+  if (reading.heart_rate != null) {
+    if (reading.heart_rate < 30 || reading.heart_rate > 220) {
+      artifactScore -= 40;
+      reasons.push('Heart rate outside physiologically plausible range');
+    }
+  }
+
+  if (reading.oxygen_saturation != null) {
+    if (reading.oxygen_saturation < 50 || reading.oxygen_saturation > 100) {
+      artifactScore -= 40;
+      reasons.push('SpO2 value outside valid range');
+    }
+  }
+
+  artifactScore = Math.max(0, artifactScore);
+
+  // ── Overall: weighted average ──
+  const overall = Math.round(
+    sensorReliability * 0.25 +
+    temporalFreshness * 0.40 +
+    artifactScore * 0.35
+  );
+
+  const level: ConfidenceLevel =
+    overall >= 80 ? 'high' :
+    overall >= 50 ? 'medium' :
+    overall >= 20 ? 'low' : 'unknown';
+
+  const isStale = age > 15 * 60 * 1000 || age === Infinity || !reading.timestamp;
+
+  return { overall, level, sensorReliability, temporalFreshness, artifactScore, isStale, reasons };
+}
+
+// ─── Emergency threshold check (with confidence override) ──
+
+export interface EmergencyCheck {
+  shouldAlert: boolean;
+  threshold: number;
+  currentValue: number;
+  adjustedForConfidence: boolean;
+  reason: string;
+}
+
+export function checkEmergencyThreshold(
+  type: VitalType,
+  value: number | null,
+  confidence: ConfidenceScore,
+): EmergencyCheck | null {
+  if (value == null) return null;
+
+  const thresh = THRESHOLDS[type];
+  if (!thresh || !('critical' in thresh)) return null;
+
+  const criticalThreshold = (thresh as { critical: number }).critical;
+  const shouldAlert = value >= criticalThreshold;
+  const adjustedForConfidence = confidence.level === 'low' || confidence.level === 'unknown';
+
+  const reason = adjustedForConfidence
+    ? `Threshold crossed but low confidence (${confidence.overall}%) — requiring verification`
+    : `Emergency threshold breached: ${value} (limit: ${criticalThreshold})`;
+
+  return { shouldAlert, threshold: criticalThreshold, currentValue: value, adjustedForConfidence, reason };
+}
+
+export function getConfidenceColor(level: ConfidenceLevel): string {
+  switch (level) {
+    case 'high': return '#10B981';
+    case 'medium': return '#F59E0B';
+    case 'low': return '#EF4444';
+    default: return '#94A3B8';
+  }
+}
+
+export function getConfidenceLabel(level: ConfidenceLevel, isAr = false): string {
+  switch (level) {
+    case 'high': return isAr ? 'عالية' : 'High';
+    case 'medium': return isAr ? 'متوسطة' : 'Medium';
+    case 'low': return isAr ? 'منخفضة' : 'Low';
+    default: return isAr ? 'غير معروفة' : 'Unknown';
+  }
 }
 
 // ─── Thresholds ────────────────────────────────────────────────
@@ -95,9 +256,8 @@ function trackAnomaly(type: VitalType, status: VitalStatus): boolean {
       startedAt: current.startedAt ?? Date.now(),
       status,
     });
-    return true; // anomaly detected
+    return true;
   } else {
-    // Reset on normal
     anomalyHistory.delete(type);
     return false;
   }
@@ -213,9 +373,9 @@ function makeUnknown(type: VitalType, unit: string): VitalAnalysis {
   return { status: 'unknown', value: null, unit, threshold: 0, severity: 'low', message: 'No data available' };
 }
 
-// ─── Main analyzer ─────────────────────────────────────────────
+// ─── Main analyzer (with confidence) ─────────────────────────────────────────────
 
-export function analyzeVitals(reading: VitalsReading): HealthAnalysis {
+export function analyzeVitals(reading: VitalReadingWithMeta): HealthAnalysis {
   const hr = analyzeHeartRate(reading.heart_rate ?? null);
   const spo2 = analyzeSpO2(reading.oxygen_saturation ?? null);
   const bp = analyzeBloodPressure(reading.blood_pressure_systolic ?? null, reading.blood_pressure_diastolic ?? null);
@@ -256,6 +416,8 @@ export function analyzeVitals(reading: VitalsReading): HealthAnalysis {
     else if (temp.status === 'critical') emergencyType = 'hyperthermia';
   }
 
+  const confidence = computeConfidenceScore(reading);
+
   return {
     timestamp: reading.timestamp ?? Date.now(),
     overall,
@@ -263,10 +425,11 @@ export function analyzeVitals(reading: VitalsReading): HealthAnalysis {
     anomalyCount,
     isEmergency,
     emergencyType,
+    confidence,
   };
 }
 
-// ─── Convenience helpers ───────────────────────────────────────
+// ─── Stale detection ─────────────────────────────────────────────
 
 export function isVitalsStale(reading: VitalsReading, maxAgeMs = 15 * 60 * 1000): boolean {
   if (!reading.timestamp) return true;

@@ -12,9 +12,13 @@ export type EventBus = {
   emit(event: Event<Record<string, unknown>>): void;
   on(key: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void;
   once(key: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void;
+  onWildcard(pattern: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void;
+  onceWildcard(pattern: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void;
   off(key: string): void;
+  offWildcard(pattern: string): void;
   offAll(): void;
   listenerCount(key: string): number;
+  listenerCountWildcard(pattern: string): number;
 };
 
 export type Event<T extends Record<string, unknown> = Record<string, unknown>> = {
@@ -96,7 +100,22 @@ type ListenerEntry = {
 };
 
 const listeners = new Map<string, ListenerEntry[]>();
+const wildcardListeners = new Map<string, ListenerEntry[]>();
 let warnDuplicateListeners = false;
+
+// ── Glob pattern matcher (fnmatch-style) ──
+function matchesPattern(pattern: string, key: string): boolean {
+  if (pattern === key) return true;
+  if (pattern === '*') return true;
+  const parts = pattern.split('.');
+  const keyParts = key.split('.');
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === '*') continue;
+    if (parts[i] === keyParts[i]) continue;
+    return false;
+  }
+  return parts.length === keyParts.length;
+}
 
 /**
  * Create a new EventBus instance.
@@ -106,13 +125,11 @@ export function createEventBus(): EventBus {
   return {
     emit(event) {
       const entries = listeners.get(event.type) ?? [];
-      // Snapshot to avoid mutation during iteration
       const snapshot = entries.slice();
 
       for (const entry of snapshot) {
         try {
           const result = entry.handler(event as Event<Record<string, unknown>>);
-          // Fire-and-forget async handlers
           if (result instanceof Promise) {
             result.catch((err) =>
               console.warn(`[EventBus] Async handler error for "${event.type}":`, err)
@@ -125,6 +142,35 @@ export function createEventBus(): EventBus {
         if (entry.once) {
           const idx = entries.indexOf(entry);
           if (idx !== -1) entries.splice(idx, 1);
+        }
+      }
+
+      // ── Wildcard dispatch ──
+      const wildcardSnapshot: Array<{ entry: ListenerEntry; pattern: string }> = [];
+      for (const [pattern, wEntries] of wildcardListeners) {
+        if (matchesPattern(pattern, event.type)) {
+          for (const entry of wEntries) wildcardSnapshot.push({ entry, pattern });
+        }
+      }
+
+      for (const { entry } of wildcardSnapshot) {
+        try {
+          const result = entry.handler(event as Event<Record<string, unknown>>);
+          if (result instanceof Promise) {
+            result.catch((err) =>
+              console.warn(`[EventBus] Async wildcard handler error for "${event.type}":`, err)
+            );
+          }
+        } catch (err) {
+          console.warn(`[EventBus] Wildcard handler error for "${event.type}":`, err);
+        }
+
+        if (entry.once) {
+          const wEntries = wildcardListeners.get(pattern);
+          if (wEntries) {
+            const idx = wEntries.indexOf(entry);
+            if (idx !== -1) wEntries.splice(idx, 1);
+          }
         }
       }
     },
@@ -173,12 +219,53 @@ export function createEventBus(): EventBus {
       listeners.delete(key);
     },
 
+    onWildcard(pattern: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void {
+      if (!wildcardListeners.has(pattern)) {
+        wildcardListeners.set(pattern, []);
+      }
+      const arr = wildcardListeners.get(pattern)!;
+      const entry: ListenerEntry = { handler, once: false };
+      arr.push(entry);
+      return () => {
+        const entries = wildcardListeners.get(pattern);
+        if (!entries) return;
+        const idx = entries.indexOf(entry);
+        if (idx !== -1) entries.splice(idx, 1);
+        if (entries.length === 0) wildcardListeners.delete(pattern);
+      };
+    },
+
+    onceWildcard(pattern: string, handler: (event: Event<Record<string, unknown>>) => void | Promise<void>): () => void {
+      if (!wildcardListeners.has(pattern)) {
+        wildcardListeners.set(pattern, []);
+      }
+      const arr = wildcardListeners.get(pattern)!;
+      const entry: ListenerEntry = { handler, once: true };
+      arr.push(entry);
+      return () => {
+        const entries = wildcardListeners.get(pattern);
+        if (!entries) return;
+        const idx = entries.indexOf(entry);
+        if (idx !== -1) entries.splice(idx, 1);
+        if (entries.length === 0) wildcardListeners.delete(pattern);
+      };
+    },
+
+    offWildcard(pattern: string) {
+      wildcardListeners.delete(pattern);
+    },
+
     offAll() {
       listeners.clear();
+      wildcardListeners.clear();
     },
 
     listenerCount(key: string): number {
       return listeners.get(key)?.length ?? 0;
+    },
+
+    listenerCountWildcard(pattern: string): number {
+      return wildcardListeners.get(pattern)?.length ?? 0;
     },
   };
 }

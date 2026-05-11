@@ -33,6 +33,8 @@ type AppState = {
   darkMode: boolean;
   healthDataConsent: boolean;
   notificationPrefs: NotificationPrefs;
+  /** Used by RecoverySystem to trigger screen re-mounts */
+  _recoverReloadTrigger: number;
   hydrate: (fallbackLanguage: AppLanguage) => Promise<void>;
   setLanguage: (language: AppLanguage) => Promise<void>;
   setDarkMode: (enabled: boolean) => Promise<void>;
@@ -59,6 +61,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   darkMode: false,
   healthDataConsent: true,
   notificationPrefs: { ...DEFAULT_NOTIF_PREFS },
+  _recoverReloadTrigger: 0,
   hydrate: async (fallbackLanguage) => {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) {

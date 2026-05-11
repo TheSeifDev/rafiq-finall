@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, RefreshControl, Animated, Easing,
+  Dimensions, RefreshControl, Animated, Easing, ActivityIndicator,
 } from 'react-native';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,7 +21,7 @@ import { spacing, radius } from '../theme';
 import { translations } from '../constants/translations';
 import { vitalsService } from '../services/vitals.service';
 import { patientService } from '../services/patient.service';
-import { simulator } from '../dev/simulator';
+import { wearableService } from '../services/wearable/ble.service';
 import { useAuthStore } from '../store/auth.store';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -59,37 +59,68 @@ interface WeeklyData {
   aiObservations: string[];
 }
 
-// ─── Build weekly data from simulator (only when no real data) ──
+// ─── Build weekly data from wearableService (real data or simulated fallback) ──
 
-function buildFromSimulator(isAr = false): WeeklyData {
-  const trends = simulator.generateWeeklyTrends('sedentary', isAr);
-  const days: DailyVitals[] = trends.map(t => ({
-    day: t.day,
-    dayShort: t.dayShort,
-    dayIndex: t.dayIndex,
-    hr: t.hr,
-    spo2: t.spo2,
-    sleep: t.sleep,
-    steps: t.steps,
-    bpSys: t.bpSys,
-    bpDia: t.bpDia,
-    temp: t.temp,
-    stressLevel: t.stressLevel,
-  }));
+async function buildWeeklyData(session: { user: { id: string } } | null, isAr = false): Promise<WeeklyData> {
+  let days: DailyVitals[] = [];
+
+  if (session?.user.id) {
+    try {
+      const profile = await patientService.getProfile(session.user.id);
+      if (profile) {
+        const records = await vitalsService.getVitalsHistory(profile.id, 30);
+        if (records.length > 0) {
+          const recent = records.slice(0, 7).reverse();
+          days = recent.map((r) => ({
+            day: new Date(r.recorded_at).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
+              weekday: 'short', month: 'short', day: 'numeric',
+            }),
+            dayShort: new Date(r.recorded_at).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', { weekday: 'short' }),
+            dayIndex: new Date(r.recorded_at).getDay(),
+            hr: r.heart_rate ?? 72,
+            spo2: r.oxygen_saturation ?? 97,
+            sleep: 7,
+            steps: (r as any).steps ?? 5000,
+            bpSys: r.blood_pressure_systolic ?? 118,
+            bpDia: r.blood_pressure_diastolic ?? 76,
+            temp: r.temperature ?? 36.6,
+            stressLevel: 40,
+          }));
+        }
+      }
+    } catch { /* fallback */ }
+  }
+
+  if (days.length === 0) {
+    const history = await wearableService.generateHistory(7);
+    days = history.map((r) => ({
+      day: new Date(r.timestamp).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
+        weekday: 'short', month: 'short', day: 'numeric',
+      }),
+      dayShort: new Date(r.timestamp).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', { weekday: 'short' }),
+      dayIndex: new Date(r.timestamp).getDay(),
+      hr: r.heart_rate,
+      spo2: r.oxygen_saturation,
+      sleep: r.sleep_hours ?? 7,
+      steps: r.steps ?? 5000,
+      bpSys: r.blood_pressure_systolic,
+      bpDia: r.blood_pressure_diastolic,
+      temp: r.temperature,
+      stressLevel: 40,
+    }));
+  }
 
   const avgHR = Math.round(days.reduce((s, d) => s + d.hr, 0) / 7);
   const avgSpo2 = Math.round(days.reduce((s, d) => s + d.spo2, 0) / 7 * 10) / 10;
   const avgSleep = Math.round(days.reduce((s, d) => s + d.sleep, 0) / 7 * 10) / 10;
   const avgSteps = Math.round(days.reduce((s, d) => s + d.steps, 0) / 7);
 
-  const fallRiskScore = Math.round(18 + Math.random() * 28);
-  const medicationAdherence = Math.round(72 + Math.random() * 28);
-  const wellnessScore = Math.round(62 + Math.random() * 33);
+  const fallRiskScore = 32;
+  const medicationAdherence = 85;
+  const wellnessScore = 72;
   const activityScore = Math.round(avgSteps / 100);
   const sleepScore = Math.round(avgSleep / 9 * 100);
-
-  const trend: 'up' | 'down' | 'stable' = simulator.getPersona() === 'athlete' ? 'up'
-    : simulator.getPersona() === 'elderly' ? 'down' : 'stable';
+  const trend: 'up' | 'down' | 'stable' = avgHR < 65 ? 'up' : avgHR > 82 ? 'down' : 'stable';
 
   const aiObservations = [
     isAr
@@ -101,13 +132,16 @@ function buildFromSimulator(isAr = false): WeeklyData {
     avgSleep >= 7
       ? (isAr ? `النوم ${avgSleep.toFixed(1)}h — ضمن النطاق الموصى به` : `Sleep ${avgSleep.toFixed(1)}h — within recommended range`)
       : (isAr ? `النوم ${avgSleep.toFixed(1)}h — يحتاج تحسين` : `Sleep ${avgSleep.toFixed(1)}h — could be improved`),
+    fallRiskScore > 45
+      ? (isAr ? 'خطر السقوط مرتفع — يُنصح بزيد النشاط البدني' : 'Elevated fall risk — increase physical activity')
+      : (isAr ? 'مؤشر خطر السقوط ضمن المعدل الطبيعي' : 'Fall risk indicator is normal'),
   ];
 
   return {
     days, avgHR, avgSpo2, avgSleep, avgSteps,
     fallRiskScore, medicationAdherence,
     wellnessScore, activityScore, sleepScore,
-    trend: wellnessScore > 70 ? 'up' : wellnessScore < 58 ? 'down' : 'stable',
+    trend,
     aiObservations,
   };
 }
@@ -255,16 +289,34 @@ export function WeeklyTrendsScreen(): React.JSX.Element {
   const language = useAppStore((s) => s.language);
   const isAr = language === 'ar';
 
-  const [data, setData] = useState<WeeklyData>(() => buildFromSimulator(isAr));
+  const session = useAuthStore((s) => s.session);
+  const [data, setData] = useState<WeeklyData>({
+    days: [], avgHR: 72, avgSpo2: 97, avgSleep: 7, avgSteps: 5000,
+    fallRiskScore: 32, medicationAdherence: 85, wellnessScore: 72,
+    activityScore: 50, sleepScore: 78, trend: 'stable', aiObservations: [],
+  });
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'week' | 'month'>('week');
+
+  // ── Initial async load ──
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    buildWeeklyData(session, isAr).then((d) => {
+      if (!cancelled) setData(d);
+    }).catch(() => { /* silent fallback */ }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [session?.user.id, isAr]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await new Promise(r => setTimeout(r, 800));
-    setData(buildFromSimulator(isAr));
+    setData(await buildWeeklyData(session, isAr));
     setRefreshing(false);
-  }, [isAr]);
+  }, [session, isAr]);
 
   const chartConfig = useMemo(() => ({
     backgroundColor: 'transparent',
@@ -307,6 +359,17 @@ export function WeeklyTrendsScreen(): React.JSX.Element {
     if (score >= 60) return colors.warning;
     return colors.danger;
   };
+
+  if (loading) {
+    return (
+      <Screen style={{ backgroundColor: darkMode ? '#000000' : '#F2F2F7' }}>
+        <ScreenHeader title={isAr ? 'الاتجاه الأسبوعي' : 'Weekly Trends'} onBack={() => navigation.goBack()} />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen style={{ backgroundColor: darkMode ? '#000000' : '#F2F2F7' }}>

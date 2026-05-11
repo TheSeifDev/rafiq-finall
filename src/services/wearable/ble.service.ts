@@ -130,19 +130,9 @@ export const wearableService = {
     if ('generateHistory' in d && typeof d.generateHistory === 'function') {
       return d.generateHistory(days);
     }
-    // Fallback: generate programmatically
-    const readings: VitalsReading[] = [];
-    for (let i = days - 1; i >= 0; i--) {
-      readings.push({
-        heart_rate: 70 + Math.round((Math.random() - 0.5) * 20),
-        blood_pressure_systolic: 118 + Math.round((Math.random() - 0.5) * 20),
-        blood_pressure_diastolic: 76 + Math.round((Math.random() - 0.5) * 16),
-        oxygen_saturation: 97 + Math.round(Math.random() * 3),
-        temperature: parseFloat((36.5 + (Math.random() - 0.5) * 0.8).toFixed(1)),
-        timestamp: Date.now() - i * 24 * 60 * 60 * 1000,
-      });
-    }
-    return readings;
+    // Fallback via simulator for deterministic, persona-aware history
+    const { simulator } = await import('../../dev/simulator');
+    return simulator.generateHistory(days, 'sedentary');
   },
 };
 
