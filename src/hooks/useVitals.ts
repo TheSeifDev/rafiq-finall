@@ -49,16 +49,14 @@ export function useVitals(patientId: string | null): UseVitalsResult {
   useEffect(() => {
     if (!patientId) return;
 
-    const channel = vitalsReadingService.subscribeToReadings(
+    const unsubscribe = vitalsReadingService.subscribeToReadings(
       patientId,
       (newReading) => {
         setReadings((prev) => [newReading, ...prev]);
       }
     );
 
-    return () => {
-      channel.unsubscribe();
-    };
+    return unsubscribe;
   }, [patientId]);
 
   return {

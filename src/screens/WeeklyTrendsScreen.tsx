@@ -1,20 +1,17 @@
 /**
- * WeeklyTrendsScreen - Medical-Grade Weekly Health Analytics
- * Beautiful charts, health insights, AI summaries, wellness scores
+ * WeeklyTrendsScreen — Premium Medical Dashboard
+ * Apple Health / Samsung Health / WHOOP quality
+ * Full RTL Arabic support, medical-grade charts, health analytics
  */
-
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  View,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Dimensions,
-  RefreshControl,
+  View, StyleSheet, ScrollView, TouchableOpacity,
+  Dimensions, RefreshControl, Animated, Easing,
 } from 'react-native';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import Svg, { Circle, Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { Screen } from '../components/ui/Screen';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
 import { AppText } from '../components/ui/AppText';
@@ -24,14 +21,15 @@ import { spacing, radius } from '../theme';
 import { translations } from '../constants/translations';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const CHART_W = SCREEN_W - spacing.lg * 2 - spacing.md * 2;
-const CHART_H = 180;
+const CHART_W = SCREEN_W - spacing.lg * 2 - 16;
+const CHART_H = 160;
 
 // ─── Types ───────────────────────────────────────────────────
 
 interface DailyVitals {
   day: string;
   dayShort: string;
+  dayIndex: number;
   hr: number;
   spo2: number;
   sleep: number;
@@ -39,6 +37,7 @@ interface DailyVitals {
   bpSys: number;
   bpDia: number;
   temp: number;
+  stressLevel: number;
 }
 
 interface WeeklyData {
@@ -50,14 +49,15 @@ interface WeeklyData {
   fallRiskScore: number;
   medicationAdherence: number;
   wellnessScore: number;
+  activityScore: number;
+  sleepScore: number;
   trend: 'up' | 'down' | 'stable';
   aiObservations: string[];
-  comparisonText: string;
 }
 
-// ─── Generate Sample Data ────────────────────────────────────
+// ─── Data generation ─────────────────────────────────────────
 
-function generateWeekData(baseHR = 75, isAr = false): WeeklyData {
+function generateWeekData(baseHR = 74, isAr = false): WeeklyData {
   const dayNames = isAr
     ? ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
     : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -66,18 +66,24 @@ function generateWeekData(baseHR = 75, isAr = false): WeeklyData {
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const dayName = dayNames[d.getDay()];
+
+    const baseVariance = Math.sin(i * 0.5) * 4; // smooth weekly wave
+    const dayVariance = (Math.random() - 0.5) * 6;
 
     days.push({
-      day: d.toLocaleDateString(isAr ? 'ar-EG' : 'en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
-      dayShort: dayName,
-      hr: Math.round(baseHR + (Math.random() - 0.5) * 20),
-      spo2: Math.round(96 + Math.random() * 3),
-      sleep: Math.round((6 + Math.random() * 3) * 10) / 10,
-      steps: Math.round(3000 + Math.random() * 6000),
-      bpSys: Math.round(115 + Math.random() * 20),
-      bpDia: Math.round(75 + Math.random() * 15),
-      temp: Math.round((36.5 + Math.random() * 0.8) * 10) / 10,
+      day: d.toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
+        weekday: 'short', month: 'short', day: 'numeric',
+      }),
+      dayShort: dayNames[d.getDay()],
+      dayIndex: d.getDay(),
+      hr: Math.round(Math.max(58, Math.min(98, baseHR + baseVariance + dayVariance))),
+      spo2: Math.round(Math.max(95, Math.min(100, 97.5 + (Math.random() - 0.5) * 3))),
+      sleep: parseFloat(Math.max(5, Math.min(9, 7 + Math.sin(i * 0.8) * 0.8 + (Math.random() - 0.5) * 1.2)).toFixed(1)),
+      steps: Math.round(Math.max(2000, Math.min(12000, 6500 + baseVariance * 200 + dayVariance * 150))),
+      bpSys: Math.round(Math.max(105, Math.min(140, 118 + baseVariance * 0.8 + dayVariance * 1.5))),
+      bpDia: Math.round(Math.max(62, Math.min(90, 76 + baseVariance * 0.5 + dayVariance))),
+      temp: parseFloat(Math.max(36.2, Math.min(37.1, 36.6 + (Math.random() - 0.5) * 0.4)).toFixed(1)),
+      stressLevel: Math.round(Math.max(10, Math.min(90, 42 + (Math.random() - 0.5) * 25))),
     });
   }
 
@@ -86,620 +92,449 @@ function generateWeekData(baseHR = 75, isAr = false): WeeklyData {
   const avgSleep = Math.round(days.reduce((s, d) => s + d.sleep, 0) / 7 * 10) / 10;
   const avgSteps = Math.round(days.reduce((s, d) => s + d.steps, 0) / 7);
 
-  // Calculate fall risk based on sleep, HR variability, age
-  const fallRiskScore = Math.round(20 + Math.random() * 40);
+  const fallRiskScore = Math.round(18 + Math.random() * 28);
+  const medicationAdherence = Math.round(72 + Math.random() * 28);
+  const wellnessScore = Math.round(62 + Math.random() * 33);
+  const activityScore = Math.round(avgSteps / 100);
+  const sleepScore = Math.round(avgSleep / 9 * 100);
 
-  // Medication adherence (percentage)
-  const medicationAdherence = Math.round(70 + Math.random() * 30);
-
-  // Wellness score (0-100)
-  const wellnessScore = Math.round(60 + Math.random() * 35);
-
-  // AI observations
   const aiObservations = [
     isAr
-      ? 'نمط نبض القلب مستقر خلال الأسبوع. لا توجد تقلبات غير طبيعية.'
-      : 'Heart rate pattern is stable this week. No abnormal fluctuations detected.',
+      ? `متوسط نبض القلب ${avgHR} نبضة/دقيقة — مستقر ضمن النطاق الصحي`
+      : `Heart rate averaging ${avgHR} bpm — stable and within healthy range`,
     isAr
-      ? `متوسط النوم ${avgSleep.toFixed(1)} ساعة. يُنصح بالنوم 7-8 ساعات.`
-      : `Average sleep ${avgSleep.toFixed(1)} hours. Recommended 7-8 hours for better health.`,
-    avgSpo2 < 97
-      ? (isAr ? 'مستوى الأكسجين يمكن تحسينه. حاول تمارين التنفس.' : 'Oxygen levels could be improved. Try breathing exercises.')
-      : (isAr ? 'مستويات الأكسجين ممتازة.' : 'Oxygen levels are excellent.'),
-    fallRiskScore > 40
-      ? (isAr ? 'درجة خطر السقوط مرتفعة. يُنصح بمزيد من النشاط الحركي.' : 'Fall risk score is elevated. More physical activity recommended.')
-      : (isAr ? 'درجة خطر السقوط ضمن المعدل الطبيعي.' : 'Fall risk score is within normal range.'),
+      ? `مستوى الأكسجين ${avgSpo2}% — ممتاز`
+      : `Oxygen saturation at ${avgSpo2}% — excellent`,
+    avgSleep >= 7
+      ? (isAr ? `النوم ${avgSleep.toFixed(1)}h — ضمن النطاق الموصى به` : `Sleep ${avgSleep.toFixed(1)}h — within recommended range`)
+      : (isAr ? `النوم ${avgSleep.toFixed(1)}h — يحتاج تحسين` : `Sleep ${avgSleep.toFixed(1)}h — could be improved`),
+    fallRiskScore > 45
+      ? (isAr ? 'خطر السقوط مرتفع — يُنصح بزيد النشاط البدني' : 'Elevated fall risk — increase physical activity')
+      : (isAr ? 'مؤشر خطر السقوط ضمن المعدل الطبيعي' : 'Fall risk indicator is normal'),
   ];
 
-  const comparisonText = isAr
-    ? `بالمقارنة مع الأسبوع الماضي، ${wellnessScore > 65 ? 'تحسنت' : 'انخفضت'} درجة العافية بمقدار ${Math.abs(Math.round(wellnessScore - 60))}%`
-    : `Compared to last week, wellness score has ${wellnessScore > 65 ? 'improved' : 'decreased'} by ${Math.abs(Math.round(wellnessScore - 60))}%`;
-
   return {
-    days,
-    avgHR,
-    avgSpo2,
-    avgSleep,
-    avgSteps,
-    fallRiskScore,
-    medicationAdherence,
-    wellnessScore,
-    trend: wellnessScore > 65 ? 'up' : wellnessScore < 55 ? 'down' : 'stable',
+    days, avgHR, avgSpo2, avgSleep, avgSteps,
+    fallRiskScore, medicationAdherence,
+    wellnessScore, activityScore, sleepScore,
+    trend: wellnessScore > 70 ? 'up' : wellnessScore < 58 ? 'down' : 'stable',
     aiObservations,
-    comparisonText,
   };
 }
 
-// ─── Mini Sparkline ──────────────────────────────────────────
+// ─── Animated Score Ring ──────────────────────────────────────
 
-function Sparkline({ data, color, height = 40 }: { data: number[]; color: string; height?: number }) {
-  if (data.length < 2) return <View style={{ height }} />;
-
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const w = 80;
-  const step = w / (data.length - 1);
-
-  const points = data.map((v, i) => ({
-    x: i * step,
-    y: height - ((v - min) / range) * (height - 8) - 4,
-  }));
-
-  return (
-    <View style={{ width: w, height }}>
-      {points.map((p, i) => {
-        if (i === 0) return null;
-        const prev = points[i - 1];
-        const dx = p.x - prev.x;
-        const dy = p.y - prev.y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-
-        return (
-          <View
-            key={i}
-            style={{
-              position: 'absolute',
-              left: prev.x,
-              top: prev.y,
-              width: len,
-              height: 2,
-              backgroundColor: color,
-              borderRadius: 1,
-              transform: [{ rotate: `${angle}deg` }],
-              transformOrigin: 'left center',
-            }}
-          />
-        );
-      })}
-      {points.map((p, i) => (
-        <View
-          key={`d${i}`}
-          style={{
-            position: 'absolute',
-            left: p.x - 3,
-            top: p.y - 3,
-            width: 6,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: i === points.length - 1 ? color : color + '60',
-          }}
-        />
-      ))}
-    </View>
-  );
-}
-
-// ─── Score Circle ────────────────────────────────────────────
-
-function ScoreCircle({ score, label, color, size = 80 }: {
+function ScoreRing({ score, label, sub, color, size = 100 }: {
   score: number;
   label: string;
+  sub?: string;
   color: string;
   size?: number;
 }) {
-  const strokeWidth = 6;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const progress = (score / 100) * circumference;
-  const middle = size / 2;
+  const animated = useRef(new Animated.Value(0)).current;
+  const strokeWidth = 7;
+  const r = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * r;
+
+  useEffect(() => {
+    Animated.timing(animated, {
+      toValue: score,
+      duration: 1200,
+      delay: 300,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [score]);
+
+  const strokeDashoffset = animated.interpolate({
+    inputRange: [0, 100],
+    outputRange: [circumference, 0],
+    extrapolate: 'clamp',
+  });
 
   return (
-    <View style={{ alignItems: 'center' }}>
-      <View style={{ width: size, height: size, position: 'relative' }}>
-        {/* Background circle */}
-        <View
-          style={{
-            position: 'absolute',
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            borderWidth: strokeWidth,
-            borderColor: color + '20',
-          }}
+    <View style={styles.scoreRingWrap}>
+      <Svg width={size} height={size}>
+        <Circle
+          cx={size / 2} cy={size / 2} r={r}
+          stroke={color + '18'} strokeWidth={strokeWidth} fill="none"
         />
-        {/* Progress circle (simplified) */}
-        <View
-          style={{
-            position: 'absolute',
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            borderWidth: strokeWidth,
-            borderColor: color,
-            borderTopColor: 'transparent',
-            borderRightColor: score > 25 ? color : 'transparent',
-            borderBottomColor: score > 50 ? color : 'transparent',
-            borderLeftColor: score > 75 ? color : 'transparent',
-            transform: [{ rotate: '-45deg' }],
-          }}
+        <Circle
+          cx={size / 2} cy={size / 2} r={r}
+          stroke={color} strokeWidth={strokeWidth} fill="none"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={strokeDashoffset as any}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
-          <AppText style={{ fontSize: size * 0.32, fontWeight: '900', color: color }}>{score}</AppText>
-        </View>
+      </Svg>
+      <View style={[styles.scoreRingInner, { width: size, height: size }]}>
+        <AppText style={[styles.scoreRingValue, { color }]}>{score}</AppText>
       </View>
-      <AppText style={{ fontSize: 11, fontWeight: '600', color: color, marginTop: 6 }}>{label}</AppText>
+      <AppText style={[styles.scoreRingLabel, { color }]}>{label}</AppText>
+      {sub && <AppText style={styles.scoreRingSub}>{sub}</AppText>}
     </View>
   );
 }
 
-// ─── Chart Card ───────────────────────────────────────────────
+// ─── Health Status Pill ────────────────────────────────────────
 
-function ChartCard({ title, icon, children, colors, darkMode, onExpand }: {
+function HealthPill({ label, value, unit, color }: {
+  label: string; value: string; unit?: string; color: string;
+}) {
+  return (
+    <View style={[styles.healthPill, { borderColor: color + '30' }]}>
+      <View style={[styles.healthPillDot, { backgroundColor: color }]} />
+      <AppText style={styles.healthPillValue}>{value}{unit && <AppText style={styles.healthPillUnit}>{unit}</AppText>}</AppText>
+      <AppText style={styles.healthPillLabel}>{label}</AppText>
+    </View>
+  );
+}
+
+// ─── Trend Indicator ───────────────────────────────────────────
+
+function TrendIndicator({ trend, value, isAr }: {
+  trend: 'up' | 'down' | 'stable';
+  value: string;
+  isAr: boolean;
+}) {
+  const config = {
+    up: { icon: 'trending-up', color: '#10B981', bg: '#10B98115' },
+    down: { icon: 'trending-down', color: '#EF4444', bg: '#EF444415' },
+    stable: { icon: 'remove-outline', color: '#F59E0B', bg: '#F59E0B15' },
+  }[trend];
+
+  const labels = {
+    up: { en: 'Improving', ar: 'تحسن' },
+    down: { en: 'Declining', ar: 'انخفاض' },
+    stable: { en: 'Stable', ar: 'مستقر' },
+  }[trend];
+
+  return (
+    <View style={[styles.trendBadge, { backgroundColor: config.bg }]}>
+      <Ionicons name={config.icon as any} size={14} color={config.color} />
+      <AppText style={[styles.trendText, { color: config.color }]}>{value}</AppText>
+    </View>
+  );
+}
+
+// ─── Chart Card ────────────────────────────────────────────────
+
+function ChartCard({ title, icon, children, accentColor, darkMode }: {
   title: string;
   icon: string;
   children: React.ReactNode;
-  colors: any;
+  accentColor: string;
   darkMode: boolean;
-  onExpand?: () => void;
 }) {
   return (
-    <View style={[styles.chartCard, { backgroundColor: darkMode ? 'rgba(255,255,255,0.04)' : '#FFFFFF', borderColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-      <View style={styles.chartCardHeader}>
-        <View style={[styles.chartIcon, { backgroundColor: colors.primary + '15' }]}>
-          <Ionicons name={icon as any} size={16} color={colors.primary} />
+    <View style={[styles.card, { backgroundColor: darkMode ? '#1C1C1E' : '#FFFFFF' }]}>
+      <View style={styles.cardHeader}>
+        <View style={[styles.cardIconWrap, { backgroundColor: accentColor + '14' }]}>
+          <Ionicons name={icon as any} size={16} color={accentColor} />
         </View>
-        <AppText style={[styles.chartTitle, { color: colors.textPrimary }]}>{title}</AppText>
-        {onExpand && (
-          <TouchableOpacity activeOpacity={0.7} onPress={onExpand}>
-            <Ionicons name="expand-outline" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
+        <AppText style={[styles.cardTitle, { color: darkMode ? '#FFFFFF' : '#1C1C1E' }]}>{title}</AppText>
+        <View style={[styles.cardDot, { backgroundColor: accentColor }]} />
       </View>
       {children}
     </View>
   );
 }
 
-// ─── Main Screen ─────────────────────────────────────────────
+// ─── Stat Row ───────────────────────────────────────────────────
+
+function StatItem({ label, value, unit, color }: {
+  label: string;
+  value: string | number;
+  unit?: string;
+  color: string;
+}) {
+  return (
+    <View style={styles.statItem}>
+      <AppText style={[styles.statValue, { color }]}>{value}{unit && <AppText style={styles.statUnit}> {unit}</AppText>}</AppText>
+      <AppText style={styles.statLabel}>{label}</AppText>
+    </View>
+  );
+}
+
+// ─── Main Screen ──────────────────────────────────────────────
 
 export function WeeklyTrendsScreen(): React.JSX.Element {
   const navigation = useNavigation();
-  const { colors, darkMode, isRTL } = useTheme();
+  const { colors, darkMode } = useTheme();
   const language = useAppStore((s) => s.language);
-  const t = translations[language];
   const isAr = language === 'ar';
 
-  const [data, setData] = useState<WeeklyData>(() => generateWeekData(75, isAr));
+  const [data, setData] = useState<WeeklyData>(() => generateWeekData(74, isAr));
   const [refreshing, setRefreshing] = useState(false);
-  const [activePeriod, setActivePeriod] = useState<'week' | 'month'>('week');
+  const [activeTab, setActiveTab] = useState<'week' | 'month'>('week');
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await new Promise(r => setTimeout(r, 1000));
-    setData(generateWeekData(75, isAr));
+    await new Promise(r => setTimeout(r, 800));
+    setData(generateWeekData(74 + Math.round(Math.random() * 6 - 3), isAr));
     setRefreshing(false);
   }, [isAr]);
 
-  // Chart config
   const chartConfig = useMemo(() => ({
     backgroundColor: 'transparent',
-    backgroundGradientFrom: colors.surface,
-    backgroundGradientTo: colors.surface,
+    backgroundGradientFrom: darkMode ? '#1C1C1E' : '#FFFFFF',
+    backgroundGradientTo: darkMode ? '#1C1C1E' : '#FFFFFF',
     decimalPlaces: 0,
-    color: (opacity = 1) => `rgba(0, 194, 255, ${opacity})`,
+    color: () => colors.primary,
     labelColor: () => colors.textSecondary,
-    style: { borderRadius: 16 },
-    propsForDots: { r: '4', strokeWidth: '2', stroke: colors.primary, fill: colors.surface },
-    propsForBackgroundLines: { stroke: colors.border, strokeDasharray: '4 4' },
-    propsForLabels: { fontSize: 10 },
-    fillShadowGradientFrom: colors.danger,
-    fillShadowGradientTo: colors.surface,
-    fillShadowGradientFromOpacity: 0.15,
+    propsForDots: { r: '3', strokeWidth: '1.5', fill: darkMode ? '#1C1C1E' : '#FFFFFF' },
+    propsForBackgroundLines: { stroke: colors.border + '40', strokeDasharray: '3 4' },
+    propsForLabels: { fontSize: 9 },
+    fillShadowGradientFrom: colors.primary,
+    fillShadowGradientTo: 'transparent',
+    fillShadowGradientFromOpacity: 0.12,
     fillShadowGradientToOpacity: 0,
-  }), [colors]);
+  }), [colors, darkMode]);
 
-  // HR Chart data
   const hrChartData = useMemo(() => ({
     labels: data.days.map(d => d.dayShort),
-    datasets: [{ data: data.days.map(d => d.hr), color: () => colors.danger, strokeWidth: 2.5 }],
-  }), [data, colors]);
+    datasets: [{ data: data.days.map(d => d.hr), color: () => '#EF4444', strokeWidth: 2 }],
+  }), [data]);
 
-  // SpO2 Chart data
   const spo2ChartData = useMemo(() => ({
     labels: data.days.map(d => d.dayShort),
     datasets: [{ data: data.days.map(d => d.spo2), color: () => colors.primary, strokeWidth: 2 }],
   }), [data, colors]);
 
-  // Sleep Chart data
   const sleepChartData = useMemo(() => ({
     labels: data.days.map(d => d.dayShort),
-    datasets: [{ data: data.days.map(d => d.sleep), color: () => colors.success, strokeWidth: 2 }],
-  }), [data, colors]);
-
-  // Steps bar chart
-  const stepsChartData = useMemo(() => ({
-    labels: data.days.map(d => d.dayShort),
-    datasets: [{ data: data.days.map(d => d.steps / 1000) }],
+    datasets: [{ data: data.days.map(d => d.sleep), color: () => '#8B5CF6', strokeWidth: 2 }],
   }), [data]);
 
-  const trendColors = {
-    up: colors.success,
-    down: colors.danger,
-    stable: colors.warning,
-  };
+  const stepsChartData = useMemo(() => ({
+    labels: data.days.map(d => d.dayShort),
+    datasets: [{ data: data.days.map(d => Math.round(d.steps / 1000)) }],
+  }), [data]);
 
-  const trendIcons = {
-    up: 'trending-up',
-    down: 'trending-down',
-    stable: 'remove-outline',
+  const pillColor = (score: number) => {
+    if (score >= 80) return colors.success;
+    if (score >= 60) return colors.warning;
+    return colors.danger;
   };
 
   return (
-    <Screen style={{ backgroundColor: colors.background }}>
-      <ScreenHeader
-        title={t.weeklyTrendsTitle}
-        onBack={() => navigation.goBack()}
-      />
+    <Screen style={{ backgroundColor: darkMode ? '#000000' : '#F2F2F7' }}>
+      <ScreenHeader title={isAr ? 'الاتجاه الأسبوعي' : 'Weekly Trends'} onBack={() => navigation.goBack()} />
 
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
-        {/* Period Selector */}
-        <View style={[styles.periodSelector, { backgroundColor: darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }]}>
-          {(['week', 'month'] as const).map((p) => (
-            <TouchableOpacity
-              key={p}
-              activeOpacity={0.7}
-              onPress={() => setActivePeriod(p)}
-              style={[
-                styles.periodBtn,
-                {
-                  backgroundColor: activePeriod === p ? colors.primary : 'transparent',
-                },
-              ]}
-            >
-              <AppText style={[styles.periodBtnText, { color: activePeriod === p ? '#FFFFFF' : colors.textSecondary }]}>
-                {p === 'week' ? (isAr ? 'أسبوع' : 'Week') : (isAr ? 'شهر' : 'Month')}
+        {/* ── Tab Selector ── */}
+        <View style={[styles.tabRow]}>
+          {(['week', 'month'] as const).map((tab) => (
+            <TouchableOpacity key={tab} activeOpacity={0.7} onPress={() => setActiveTab(tab)}
+              style={[styles.tab, activeTab === tab && { backgroundColor: colors.primary }]}>
+              <AppText style={[styles.tabText, { color: activeTab === tab ? '#FFFFFF' : colors.textSecondary }]}>
+                {tab === 'week' ? (isAr ? 'الأسبوع' : 'Week') : (isAr ? 'الشهر' : 'Month')}
               </AppText>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Wellness Score Card */}
-        <View style={[styles.wellnessCard, { backgroundColor: colors.primary + '08', borderColor: colors.primary + '25' }]}>
-          <View style={styles.wellnessHeader}>
-            <View style={[styles.wellnessIcon, { backgroundColor: colors.primary + '20' }]}>
-              <Ionicons name="heart" size={24} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <AppText style={[styles.wellnessTitle, { color: colors.textPrimary }]}>{t.wellnessScore}</AppText>
-              <AppText style={[styles.wellnessSub, { color: colors.textSecondary }]}>
-                {data.comparisonText}
+        {/* ── Wellness Score Hero ── */}
+        <View style={[styles.heroCard, { backgroundColor: darkMode ? '#1C1C1E' : '#FFFFFF' }]}>
+          <View style={styles.heroTop}>
+            <View>
+              <AppText style={[styles.heroTitle, { color: darkMode ? '#FFFFFF' : '#1C1C1E' }]}>
+                {isAr ? 'التقرير الصحي الأسبوعي' : 'Weekly Health Report'}
+              </AppText>
+              <AppText style={styles.heroSub}>
+                {isAr ? `تقرير ${new Date().toLocaleDateString(isAr ? 'ar-EG' : 'en-US', { month: 'long', year: 'numeric' })}` : `Report for ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`}
               </AppText>
             </View>
-            <View style={[styles.trendBadge, { backgroundColor: trendColors[data.trend] + '20' }]}>
-              <Ionicons name={trendIcons[data.trend] as any} size={18} color={trendColors[data.trend]} />
-            </View>
+            <TrendIndicator
+              trend={data.trend}
+              value={data.trend === 'up' ? (isAr ? '↑ تحسين' : '↑ Improving') : data.trend === 'down' ? (isAr ? '↓ انخفاض' : '↓ Declining') : (isAr ? '→ مستقر' : '→ Stable')}
+              isAr={isAr}
+            />
           </View>
 
-          {/* Score Circle */}
-          <View style={styles.scoreRow}>
-            <ScoreCircle score={data.wellnessScore} label={isAr ? 'العافية' : 'Wellness'} color={colors.primary} size={100} />
-            <View style={styles.subScores}>
-              <ScoreCircle score={data.medicationAdherence} label={isAr ? 'الالتزام' : 'Adherence'} color={colors.success} size={70} />
-              <ScoreCircle score={100 - data.fallRiskScore} label={isAr ? 'الأمان' : 'Safety'} color={colors.warning} size={70} />
-            </View>
+          {/* Score rings row */}
+          <View style={styles.scoresRow}>
+            <ScoreRing
+              score={data.wellnessScore}
+              label={isAr ? 'العافية' : 'Wellness'}
+              sub={isAr ? 'درجة شاملة' : 'Overall'}
+              color="#00C2FF"
+              size={90}
+            />
+            <ScoreRing
+              score={data.activityScore}
+              label={isAr ? 'النشاط' : 'Activity'}
+              sub={isAr ? 'النقاط' : 'Points'}
+              color="#F59E0B"
+              size={90}
+            />
+            <ScoreRing
+              score={data.sleepScore}
+              label={isAr ? 'النوم' : 'Sleep'}
+              sub={isAr ? 'الجودة' : 'Quality'}
+              color="#8B5CF6"
+              size={90}
+            />
           </View>
 
-          {/* Mini trend chart */}
-          <View style={styles.miniTrend}>
-            <Sparkline data={data.days.map(d => d.hr)} color={colors.danger} />
+          {/* Vitals pills */}
+          <View style={styles.pillsRow}>
+            <HealthPill label={isAr ? 'متوسط النبض' : 'Avg HR'} value={`${data.avgHR}`} unit="bpm" color="#EF4444" />
+            <HealthPill label={isAr ? 'نسبة الأكسجين' : 'SpO2'} value={`${data.avgSpo2}`} unit="%" color={colors.primary} />
+            <HealthPill label={isAr ? 'متوسط النوم' : 'Avg Sleep'} value={`${data.avgSleep}`} unit="h" color="#8B5CF6" />
           </View>
         </View>
 
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          {[
-            { icon: 'heart', label: isAr ? 'متوسط النبض' : 'Avg HR', value: `${data.avgHR}`, unit: 'bpm', color: colors.danger },
-            { icon: 'water', label: isAr ? 'متوسط الأكسجين' : 'Avg SpO2', value: `${data.avgSpo2}%`, unit: '', color: colors.primary },
-            { icon: 'moon', label: isAr ? 'متوسط النوم' : 'Avg Sleep', value: `${data.avgSleep}h`, unit: '', color: colors.success },
-            { icon: 'footsteps', label: isAr ? 'متوسط الخطوات' : 'Avg Steps', value: `${(data.avgSteps / 1000).toFixed(1)}k`, unit: '', color: colors.warning },
-          ].map((stat, i) => (
-            <View key={i} style={[styles.statCard, { backgroundColor: darkMode ? 'rgba(255,255,255,0.04)' : '#FFFFFF', borderColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-              <View style={[styles.statIconWrap, { backgroundColor: stat.color + '15' }]}>
-                <Ionicons name={stat.icon as any} size={14} color={stat.color} />
-              </View>
-              <AppText style={[styles.statValue, { color: stat.color }]}>{stat.value}</AppText>
-              <AppText style={[styles.statLabel, { color: colors.textSecondary }]}>{stat.label}</AppText>
-            </View>
-          ))}
-        </View>
-
-        {/* Heart Rate Chart */}
-        <ChartCard
-          title={t.heartRateTrends}
-          icon="heart"
-          colors={colors}
-          darkMode={darkMode}
-        >
+        {/* ── Heart Rate Chart ── */}
+        <ChartCard title={isAr ? 'معدل نبض القلب' : 'Heart Rate'} icon="heart" accentColor="#EF4444" darkMode={darkMode}>
           <LineChart
             data={hrChartData}
             width={CHART_W}
             height={CHART_H}
-            chartConfig={{
-              ...chartConfig,
-              color: () => colors.danger,
-              fillShadowGradientFrom: colors.danger,
-            }}
-            bezier
-            style={styles.chart}
-            withInnerLines
-            withOuterLines={false}
-            fromZero={false}
-            segments={3}
+            chartConfig={{ ...chartConfig, color: () => '#EF4444', fillShadowGradientFrom: '#EF4444' }}
+            bezier style={styles.chart}
+            withInnerLines withOuterLines={false} fromZero={false} segments={3}
           />
-          <View style={styles.chartLegend}>
-            <View style={[styles.legendDot, { backgroundColor: colors.danger }]} />
-            <AppText style={[styles.legendText, { color: colors.textSecondary }]}>
-              {isAr ? 'نبض القلب (ن/د)' : 'Heart Rate (bpm)'}
+          <View style={styles.chartMeta}>
+            <AppText style={styles.chartMetaText}>
+              {isAr ? `المتوسط: ${data.avgHR} نبضة/دقيقة` : `Average: ${data.avgHR} bpm`}
             </AppText>
-            <View style={{ flex: 1 }} />
-            <AppText style={[styles.legendAvg, { color: colors.danger }]}>
-              {isAr ? `المتوسط: ${data.avgHR}` : `Avg: ${data.avgHR}`}
-            </AppText>
+            <View style={[styles.rangeBadge, { backgroundColor: '#EF444415' }]}>
+              <AppText style={styles.rangeText}>{data.days[0].hr} – {data.days[data.days.length - 1].hr} bpm</AppText>
+            </View>
           </View>
         </ChartCard>
 
-        {/* SpO2 Chart */}
-        <ChartCard
-          title={t.oxygenTrends}
-          icon="water"
-          colors={colors}
-          darkMode={darkMode}
-        >
+        {/* ── SpO2 Chart ── */}
+        <ChartCard title={isAr ? 'تشبع الأكسجين' : 'Blood Oxygen'} icon="water" accentColor={colors.primary} darkMode={darkMode}>
           <LineChart
             data={spo2ChartData}
             width={CHART_W}
             height={CHART_H}
-            chartConfig={{
-              ...chartConfig,
-              color: () => colors.primary,
-              fillShadowGradientFrom: colors.primary,
-            }}
-            bezier
-            style={styles.chart}
-            withInnerLines
-            withOuterLines={false}
-            fromZero={false}
-            segments={2}
+            chartConfig={{ ...chartConfig, color: () => colors.primary, fillShadowGradientFrom: colors.primary }}
+            bezier style={styles.chart}
+            withInnerLines withOuterLines={false} fromZero={false} segments={2}
           />
-          <View style={styles.chartLegend}>
-            <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
-            <AppText style={[styles.legendText, { color: colors.textSecondary }]}>
-              {isAr ? 'تشبع الأكسجين (%)' : 'SpO2 (%)'}
+          <View style={styles.chartMeta}>
+            <AppText style={styles.chartMetaText}>
+              {isAr ? `المتوسط: ${data.avgSpo2}%` : `Average: ${data.avgSpo2}%`}
             </AppText>
-            <View style={{ flex: 1 }} />
-            <AppText style={[styles.legendAvg, { color: colors.primary }]}>
-              {isAr ? `المتوسط: ${data.avgSpo2}%` : `Avg: ${data.avgSpo2}%`}
-            </AppText>
+            <View style={[styles.rangeBadge, { backgroundColor: colors.primary + '15' }]}>
+              <AppText style={[styles.rangeText, { color: colors.primary }]}>
+                {isAr ? 'ضمن النطاق الطبيعي' : 'Normal range'}
+              </AppText>
+            </View>
           </View>
         </ChartCard>
 
-        {/* Sleep Chart */}
-        <ChartCard
-          title={t.sleepTrends}
-          icon="moon"
-          colors={colors}
-          darkMode={darkMode}
-        >
+        {/* ── Sleep Chart ── */}
+        <ChartCard title={isAr ? 'ساعات النوم' : 'Sleep Duration'} icon="moon" accentColor="#8B5CF6" darkMode={darkMode}>
           <LineChart
             data={sleepChartData}
             width={CHART_W}
             height={CHART_H}
-            chartConfig={{
-              ...chartConfig,
-              color: () => colors.success,
-              fillShadowGradientFrom: colors.success,
-            }}
-            bezier
-            style={styles.chart}
-            withInnerLines
-            withOuterLines={false}
-            fromZero={false}
-            segments={3}
+            chartConfig={{ ...chartConfig, color: () => '#8B5CF6', fillShadowGradientFrom: '#8B5CF6' }}
+            bezier style={styles.chart}
+            withInnerLines withOuterLines={false} fromZero={false} segments={3}
           />
-          <View style={styles.chartLegend}>
-            <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
-            <AppText style={[styles.legendText, { color: colors.textSecondary }]}>
-              {isAr ? 'ساعات النوم' : 'Sleep Hours'}
+          <View style={styles.chartMeta}>
+            <AppText style={styles.chartMetaText}>
+              {isAr ? `المتوسط: ${data.avgSleep}h` : `Average: ${data.avgSleep}h`}
             </AppText>
-            <View style={{ flex: 1 }} />
-            <AppText style={[styles.legendAvg, { color: colors.success }]}>
-              {isAr ? `المتوسط: ${data.avgSleep}h` : `Avg: ${data.avgSleep}h`}
-            </AppText>
+            <View style={[styles.rangeBadge, { backgroundColor: '#8B5CF615' }]}>
+              <AppText style={[styles.rangeText, { color: '#8B5CF6' }]}>
+                {isAr ? 'المستهدف: 7-8h' : 'Target: 7-8h'}
+              </AppText>
+            </View>
           </View>
         </ChartCard>
 
-        {/* Activity Steps */}
-        <ChartCard
-          title={t.activityTrends}
-          icon="footsteps"
-          colors={colors}
-          darkMode={darkMode}
-        >
+        {/* ── Activity Steps ── */}
+        <ChartCard title={isAr ? 'مستوى النشاط' : 'Activity Level'} icon="footsteps" accentColor="#F59E0B" darkMode={darkMode}>
           <BarChart
             data={stepsChartData}
             width={CHART_W}
             height={CHART_H}
-            chartConfig={{
-              ...chartConfig,
-              color: () => colors.warning,
-              fillShadowGradientFrom: colors.warning,
-            }}
+            chartConfig={{ ...chartConfig, color: () => '#F59E0B', fillShadowGradientFrom: '#F59E0B' }}
             style={styles.chart}
-            withInnerLines
-            showBarTops={false}
-            fromZero={true}
-            yAxisSuffix="k"
-            yAxisLabel=""
+            withInnerLines showBarTops={false} fromZero yAxisSuffix="k" yAxisLabel=""
           />
-          <View style={styles.chartLegend}>
-            <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
-            <AppText style={[styles.legendText, { color: colors.textSecondary }]}>
-              {isAr ? 'الخطوات (بآلاف)' : 'Steps (thousands)'}
+          <View style={styles.chartMeta}>
+            <AppText style={styles.chartMetaText}>
+              {isAr ? `المتوسط: ${Math.round(data.avgSteps / 1000)}k ${isAr ? 'خطوة' : 'steps'}` : `Average: ${Math.round(data.avgSteps / 1000)}k steps`}
             </AppText>
-            <View style={{ flex: 1 }} />
-            <AppText style={[styles.legendAvg, { color: colors.warning }]}>
-              {isAr ? `المتوسط: ${(data.avgSteps / 1000).toFixed(1)}k` : `Avg: ${(data.avgSteps / 1000).toFixed(1)}k`}
-            </AppText>
+            <View style={[styles.rangeBadge, { backgroundColor: '#F59E0B15' }]}>
+              <AppText style={[styles.rangeText, { color: '#F59E0B' }]}>
+                {isAr ? `${data.avgSteps >= 6000 ? 'ممتاز' : 'تحتاج تحسين'}` : `${data.avgSteps >= 6000 ? 'Excellent' : 'Needs improvement'}`}
+              </AppText>
+            </View>
           </View>
         </ChartCard>
 
-        {/* Fall Risk Score */}
-        <View style={[styles.fallRiskCard, { backgroundColor: (data.fallRiskScore > 40 ? colors.warning : colors.success) + '12', borderColor: (data.fallRiskScore > 40 ? colors.warning : colors.success) + '30' }]}>
-          <View style={styles.fallRiskHeader}>
-            <View style={[styles.fallRiskIcon, { backgroundColor: (data.fallRiskScore > 40 ? colors.warning : colors.success) + '20' }]}>
-              <Ionicons name="alert-circle" size={22} color={data.fallRiskScore > 40 ? colors.warning : colors.success} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <AppText style={[styles.fallRiskTitle, { color: colors.textPrimary }]}>{t.fallRiskScore}</AppText>
-              <AppText style={[styles.fallRiskSub, { color: colors.textSecondary }]}>
-                {isAr
-                  ? 'بناءً على النوم والنشاط وعلامات vitality'
-                  : 'Based on sleep, activity & vital signs'}
+        {/* ── Risk & Adherence Row ── */}
+        <View style={styles.riskRow}>
+          {/* Fall Risk */}
+          <View style={[styles.miniCard, { backgroundColor: darkMode ? '#1C1C1E' : '#FFFFFF' }]}>
+            <View style={styles.miniCardHeader}>
+              <Ionicons name="alert-circle" size={16} color={data.fallRiskScore > 40 ? '#F59E0B' : '#10B981'} />
+              <AppText style={[styles.miniCardTitle, { color: darkMode ? '#FFFFFF' : '#1C1C1E' }]}>
+                {isAr ? 'خطر السقوط' : 'Fall Risk'}
               </AppText>
             </View>
-            <View style={[styles.fallRiskScore, { backgroundColor: (data.fallRiskScore > 40 ? colors.warning : colors.success) + '20' }]}>
-              <AppText style={[styles.fallRiskScoreText, { color: data.fallRiskScore > 40 ? colors.warning : colors.success }]}>
-                {data.fallRiskScore}%
-              </AppText>
+            <AppText style={[styles.miniCardValue, { color: data.fallRiskScore > 40 ? '#F59E0B' : '#10B981' }]}>
+              {100 - data.fallRiskScore}%
+            </AppText>
+            <View style={[styles.miniProgress, { backgroundColor: colors.border + '40' }]}>
+              <View style={[styles.miniProgressFill, {
+                width: `${100 - data.fallRiskScore}%`,
+                backgroundColor: data.fallRiskScore > 40 ? '#F59E0B' : '#10B981',
+              }]} />
             </View>
           </View>
 
-          {/* Progress bar */}
-          <View style={[styles.fallRiskBar, { backgroundColor: colors.border }]}>
-            <View
-              style={[
-                styles.fallRiskProgress,
-                {
-                  width: `${data.fallRiskScore}%`,
-                  backgroundColor: data.fallRiskScore > 40 ? colors.warning : colors.success,
-                },
-              ]}
-            />
+          {/* Medication Adherence */}
+          <View style={[styles.miniCard, { backgroundColor: darkMode ? '#1C1C1E' : '#FFFFFF' }]}>
+            <View style={styles.miniCardHeader}>
+              <Ionicons name="checkmark-circle" size={16} color={data.medicationAdherence >= 80 ? '#10B981' : '#F59E0B'} />
+              <AppText style={[styles.miniCardTitle, { color: darkMode ? '#FFFFFF' : '#1C1C1E' }]}>
+                {isAr ? 'الالتزام بالأدوية' : 'Adherence'}
+              </AppText>
+            </View>
+            <AppText style={[styles.miniCardValue, { color: data.medicationAdherence >= 80 ? '#10B981' : '#F59E0B' }]}>
+              {data.medicationAdherence}%
+            </AppText>
+            <View style={[styles.miniProgress, { backgroundColor: colors.border + '40' }]}>
+              <View style={[styles.miniProgressFill, {
+                width: `${data.medicationAdherence}%`,
+                backgroundColor: data.medicationAdherence >= 80 ? '#10B981' : '#F59E0B',
+              }]} />
+            </View>
           </View>
+        </View>
 
-          {/* Risk level text */}
-          <View style={styles.riskLevel}>
-            <AppText style={[styles.riskLevelText, { color: data.fallRiskScore > 40 ? colors.warning : colors.success }]}>
-              {data.fallRiskScore > 60
-                ? (isAr ? 'خطر مرتفع' : 'High Risk')
-                : data.fallRiskScore > 40
-                  ? (isAr ? 'خطر متوسط' : 'Moderate Risk')
-                  : (isAr ? 'خطر منخفض' : 'Low Risk')}
+        {/* ── AI Observations ── */}
+        <View style={[styles.aiCard, { backgroundColor: darkMode ? '#1C1C1E' : '#FFFFFF' }]}>
+          <View style={styles.aiHeader}>
+            <View style={[styles.aiIconWrap, { backgroundColor: colors.primary + '14' }]}>
+              <Ionicons name="bulb" size={18} color={colors.primary} />
+            </View>
+            <AppText style={[styles.aiTitle, { color: colors.primary }]}>
+              {isAr ? 'ملاحظات صحية' : 'Health Insights'}
             </AppText>
           </View>
-        </View>
-
-        {/* Medication Adherence */}
-        <View style={[styles.adherenceCard, { backgroundColor: darkMode ? 'rgba(255,255,255,0.04)' : '#FFFFFF', borderColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-          <View style={styles.adherenceHeader}>
-            <View style={[styles.adherenceIcon, { backgroundColor: colors.success + '15' }]}>
-              <Ionicons name="checkmark-circle" size={22} color={colors.success} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <AppText style={[styles.adherenceTitle, { color: colors.textPrimary }]}>{t.medicationAdherence}</AppText>
-              <AppText style={[styles.adherenceSub, { color: colors.textSecondary }]}>
-                {isAr ? 'الأدوية الموصوفة تم تناولها' : 'Prescribed medications taken'}
-              </AppText>
-            </View>
-            <View style={[styles.adherenceScore, { backgroundColor: colors.success + '20' }]}>
-              <AppText style={[styles.adherenceScoreText, { color: colors.success }]}>
-                {data.medicationAdherence}%
-              </AppText>
-            </View>
-          </View>
-
-          {/* Progress bar */}
-          <View style={[styles.adherenceBar, { backgroundColor: colors.border }]}>
-            <View
-              style={[
-                styles.adherenceProgress,
-                {
-                  width: `${data.medicationAdherence}%`,
-                  backgroundColor: data.medicationAdherence >= 80 ? colors.success : data.medicationAdherence >= 60 ? colors.warning : colors.danger,
-                },
-              ]}
-            />
-          </View>
-        </View>
-
-        {/* AI Observations */}
-        <View style={[styles.aiCard, { backgroundColor: colors.primary + '08', borderColor: colors.primary + '25' }]}>
-          <View style={styles.aiHeader}>
-            <View style={[styles.aiIcon, { backgroundColor: colors.primary + '20' }]}>
-              <Ionicons name="bulb" size={20} color={colors.primary} />
-            </View>
-            <AppText style={[styles.aiTitle, { color: colors.primary }]}>{t.aiObservations}</AppText>
-          </View>
-
           {data.aiObservations.map((obs, i) => (
-            <View key={i} style={styles.aiObservation}>
+            <View key={i} style={styles.aiItem}>
               <View style={[styles.aiBullet, { backgroundColor: colors.primary }]} />
               <AppText style={[styles.aiText, { color: colors.textSecondary }]}>{obs}</AppText>
             </View>
           ))}
-        </View>
-
-        {/* Quick Insights */}
-        <View style={styles.insightsGrid}>
-          <View style={[styles.insightCard, { backgroundColor: darkMode ? 'rgba(255,255,255,0.04)' : '#FFFFFF', borderColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-            <Ionicons name="calendar" size={20} color={colors.primary} />
-            <AppText style={[styles.insightLabel, { color: colors.textSecondary }]}>
-              {isAr ? 'أيام التتبع' : 'Days Tracked'}
-            </AppText>
-            <AppText style={[styles.insightValue, { color: colors.textPrimary }]}>7</AppText>
-          </View>
-
-          <View style={[styles.insightCard, { backgroundColor: darkMode ? 'rgba(255,255,255,0.04)' : '#FFFFFF', borderColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-            <Ionicons name="cloud-upload" size={20} color={colors.success} />
-            <AppText style={[styles.insightLabel, { color: colors.textSecondary }]}>
-              {isAr ? 'البيانات المزامنة' : 'Data Synced'}
-            </AppText>
-            <AppText style={[styles.insightValue, { color: colors.textPrimary }]}>100%</AppText>
-          </View>
-
-          <View style={[styles.insightCard, { backgroundColor: darkMode ? 'rgba(255,255,255,0.04)' : '#FFFFFF', borderColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-            <Ionicons name="pulse" size={20} color={colors.danger} />
-            <AppText style={[styles.insightLabel, { color: colors.textSecondary }]}>
-              {isAr ? 'متوسط النبض' : 'Avg Heart Rate'}
-            </AppText>
-            <AppText style={[styles.insightValue, { color: colors.textPrimary }]}>{data.avgHR}</AppText>
-          </View>
-
-          <View style={[styles.insightCard, { backgroundColor: darkMode ? 'rgba(255,255,255,0.04)' : '#FFFFFF', borderColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-            <Ionicons name="water" size={20} color={colors.primary} />
-            <AppText style={[styles.insightLabel, { color: colors.textSecondary }]}>
-              {isAr ? 'متوسط SpO2' : 'Avg SpO2'}
-            </AppText>
-            <AppText style={[styles.insightValue, { color: colors.textPrimary }]}>{data.avgSpo2}%</AppText>
-          </View>
         </View>
 
         <View style={{ height: spacing.xl }} />
@@ -711,263 +546,211 @@ export function WeeklyTrendsScreen(): React.JSX.Element {
 // ─── Styles ───────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  content: {
+  scroll: {
     padding: spacing.md,
-    paddingBottom: spacing.xl * 2,
+    paddingBottom: 40,
+    gap: spacing.md,
   },
-  periodSelector: {
+  tabRow: {
     flexDirection: 'row',
+    backgroundColor: 'rgba(128,128,128,0.1)',
     borderRadius: 12,
     padding: 4,
-    marginBottom: spacing.md,
   },
-  periodBtn: {
+  tab: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: 10,
     alignItems: 'center',
   },
-  periodBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  wellnessCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  wellnessHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: spacing.md,
-  },
-  wellnessIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  wellnessTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  wellnessSub: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  trendBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scoreRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 32,
-    marginBottom: spacing.md,
-  },
-  subScores: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  miniTrend: {
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: spacing.md,
-  },
-  statCard: {
-    width: '48%',
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 12,
-    alignItems: 'center',
-    gap: 4,
-  },
-  statIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  chartCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  chartCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: spacing.sm,
-  },
-  chartIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chartTitle: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  chart: {
-    borderRadius: 12,
-    marginLeft: -8,
-  },
-  chartLegend: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    paddingHorizontal: 4,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  legendAvg: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  fallRiskCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  fallRiskHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: spacing.md,
-  },
-  fallRiskIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fallRiskTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  fallRiskSub: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  fallRiskScore: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  fallRiskScoreText: {
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  fallRiskBar: {
-    height: 8,
-    borderRadius: 4,
-    marginBottom: 8,
-  },
-  fallRiskProgress: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  riskLevel: {
-    alignItems: 'center',
-  },
-  riskLevelText: {
+  tabText: {
     fontSize: 13,
     fontWeight: '700',
   },
-  adherenceCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+  heroCard: {
+    borderRadius: 20,
+    padding: spacing.lg,
+    gap: spacing.lg,
   },
-  adherenceHeader: {
+  heroTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  heroTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  heroSub: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 4,
+  },
+  trendBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: spacing.md,
-  },
-  adherenceIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  adherenceTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  adherenceSub: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  adherenceScore: {
-    paddingHorizontal: 12,
+    gap: 4,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 10,
   },
-  adherenceScoreText: {
+  trendText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  scoresRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  scoreRingWrap: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  scoreRingInner: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scoreRingValue: {
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  scoreRingLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  scoreRingSub: {
+    fontSize: 9,
+    color: '#888',
+  },
+  pillsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  healthPill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 4,
+  },
+  healthPillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginBottom: 2,
+  },
+  healthPillValue: {
     fontSize: 16,
     fontWeight: '900',
   },
-  adherenceBar: {
-    height: 8,
-    borderRadius: 4,
+  healthPillUnit: {
+    fontSize: 10,
+    fontWeight: '600',
   },
-  adherenceProgress: {
+  healthPillLabel: {
+    fontSize: 9,
+    color: '#888',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  card: {
+    borderRadius: 20,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cardIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  cardDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  chart: {
+    borderRadius: 14,
+    marginLeft: -8,
+  },
+  chartMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  chartMetaText: {
+    fontSize: 11,
+    color: '#888',
+    fontWeight: '600',
+  },
+  rangeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  rangeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#888',
+  },
+  riskRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  miniCard: {
+    flex: 1,
+    borderRadius: 16,
+    padding: 14,
+    gap: 8,
+  },
+  miniCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  miniCardTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  miniCardValue: {
+    fontSize: 24,
+    fontWeight: '900',
+  },
+  miniProgress: {
+    height: 4,
+    borderRadius: 2,
+  },
+  miniProgressFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 2,
   },
   aiCard: {
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: 20,
     padding: spacing.md,
-    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   aiHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: spacing.md,
   },
-  aiIcon: {
+  aiIconWrap: {
     width: 36,
     height: 36,
     borderRadius: 10,
@@ -978,42 +761,41 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  aiObservation: {
+  aiItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    marginBottom: 10,
+    paddingVertical: 4,
   },
   aiBullet: {
-    width: 6,
-    height: 6,
+    width: 5,
+    height: 5,
     borderRadius: 3,
     marginTop: 5,
   },
   aiText: {
     flex: 1,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12.5,
+    lineHeight: 18,
   },
-  insightsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  insightCard: {
-    width: '47%',
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
+  statItem: {
     alignItems: 'center',
-    gap: 6,
+    flex: 1,
+    gap: 2,
   },
-  insightLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  insightValue: {
+  statValue: {
     fontSize: 18,
     fontWeight: '900',
+  },
+  statUnit: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#888',
+  },
+  statLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#888',
+    textAlign: 'center',
   },
 });

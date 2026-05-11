@@ -49,6 +49,7 @@ interface FoodItem {
 interface ForbiddenFood {
   id: string;
   foodName: string;
+  nameAr?: string;
   reason: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
   condition: string;
@@ -284,7 +285,7 @@ function ForbiddenCard({ item, colors, darkMode, isAr }: {
     <View style={[styles.forbiddenCard, { backgroundColor: colors.danger + '08', borderColor: colors.danger + '30' }]}>
       <View style={styles.forbiddenHeader}>
         <View style={[styles.forbiddenIcon, { backgroundColor: colors.danger + '15' }]}>
-          <Ionicons name="alert-triangle" size={18} color={colors.danger} />
+          <Ionicons name="warning" size={18} color={colors.danger} />
         </View>
         <View style={{ flex: 1 }}>
           <AppText style={[styles.forbiddenName, { color: colors.textPrimary }]}>{item.foodName}</AppText>
@@ -366,9 +367,13 @@ export function FoodScreen(): React.JSX.Element {
     <Screen style={{ backgroundColor: colors.background }}>
       <ScreenHeader
         title={t.foodTitle}
-        subtitle={t.foodSubtitle}
         onBack={() => navigation.goBack()}
       />
+      {t.foodSubtitle && (
+        <View style={[styles.subtitleRow, { borderBottomColor: colors.border }]}>
+          <AppText style={[styles.subtitle, { color: colors.textSecondary }]}>{t.foodSubtitle}</AppText>
+        </View>
+      )}
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -858,5 +863,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     paddingLeft: 4,
+  },
+  subtitleRow: {
+    marginHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+  },
+  subtitle: {
+    fontSize: 14,
+    fontWeight: '400',
   },
 });

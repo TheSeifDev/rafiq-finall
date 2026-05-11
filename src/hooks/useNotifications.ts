@@ -53,13 +53,11 @@ export function useNotifications(): UseNotificationsResult {
   useEffect(() => {
     if (!user) return;
 
-    const channel = notificationService.subscribe(user.id, (newNotif) => {
+    const unsubscribe = notificationService.subscribe(user.id, (newNotif) => {
       setNotifications((prev) => [newNotif, ...prev]);
     });
 
-    return () => {
-      channel.unsubscribe();
-    };
+    return unsubscribe;
   }, [user]);
 
   const markRead = useCallback(

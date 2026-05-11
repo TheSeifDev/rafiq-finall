@@ -645,7 +645,7 @@ export function subscribeToNotifications(
     .subscribe();
 
   return () => {
-    channel.unsubscribe();
+    supabase.removeChannel(channel);
   };
 }
 

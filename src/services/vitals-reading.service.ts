@@ -71,8 +71,8 @@ export const vitalsReadingService = {
   subscribeToReadings(
     patientId: string,
     callback: (reading: VitalsReading) => void
-  ) {
-    return supabase
+  ): () => void {
+    const channel = supabase
       .channel(`vitals-readings-${patientId}`)
       .on(
         'postgres_changes',
@@ -85,5 +85,9 @@ export const vitalsReadingService = {
         (payload) => callback(normalizeVitalsReading(payload.new))
       )
       .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   },
 };

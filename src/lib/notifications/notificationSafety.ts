@@ -174,8 +174,129 @@ export async function safeCancelNotification(id: string): Promise<void> {
   }
 }
 
-// NOTE: safeGetPushToken removed — Expo Go SDK 54 does not support push tokens.
-// This app uses LOCAL notifications only via scheduleNotificationAsync().
+// ─── Safe schedule/cancel helpers ───────────────────────────
+
+/**
+ * Schedule a local notification safely.
+ * In Expo Go: falls back to safeScheduleNotification from notificationService module.
+ */
+export async function safeScheduleLocal(
+  params: {
+    identifier?: string;
+    title: string;
+    body: string;
+    data?: Record<string, unknown>;
+    channelId?: string;
+    seconds?: number;
+    trigger?: {
+      type: number;
+      hour?: number;
+      minute?: number;
+      repeats?: boolean;
+      seconds?: number;
+    };
+  }
+): Promise<string | null> {
+  if (isExpoGo()) {
+    // Expo Go fallback: schedule via native bridge (TIME_INTERVAL only)
+    return safeScheduleFallback(params);
+  }
+  const Notifications = await loadModule();
+  if (!Notifications) return safeScheduleFallback(params);
+
+  try {
+    return await Notifications.scheduleNotificationAsync({
+      identifier: params.identifier,
+      content: {
+        title: params.title,
+        body: params.body,
+        data: params.data,
+        sound: 'default',
+        ...(Platform.OS === 'android' && { channelId: params.channelId ?? 'medications' }),
+      },
+      trigger: params.trigger ?? {
+        type: TRIGGER.TIME_INTERVAL,
+        seconds: Math.max(1, params.seconds ?? 5),
+        repeats: false,
+      },
+    });
+  } catch (err) {
+    console.warn('[Notifications] scheduleNotification failed:', err);
+    return safeScheduleFallback(params);
+  }
+}
+
+async function safeScheduleFallback(params: {
+  identifier?: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  channelId?: string;
+  seconds?: number;
+}): Promise<string | null> {
+  const Notifications = await loadModule();
+  if (!Notifications) return null;
+  try {
+    return await Notifications.scheduleNotificationAsync({
+      identifier: params.identifier,
+      content: {
+        title: params.title,
+        body: params.body,
+        data: params.data,
+        sound: 'default',
+        ...(Platform.OS === 'android' && { channelId: params.channelId ?? 'medications' }),
+      },
+      trigger: {
+        type: TRIGGER.TIME_INTERVAL,
+        seconds: Math.max(1, params.seconds ?? 5),
+        repeats: false,
+      },
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get all scheduled notifications.
+ * In Expo Go: works natively (no push registration needed).
+ */
+export async function safeGetScheduledNotifications(): Promise<any[]> {
+  const Notifications = await loadModule();
+  if (!Notifications) return [];
+  try {
+    return await Notifications.getAllScheduledNotificationsAsync();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Cancel a scheduled notification by identifier.
+ * In Expo Go: works natively.
+ */
+export async function safeCancelScheduledNotification(id: string): Promise<void> {
+  const Notifications = await loadModule();
+  if (!Notifications) return;
+  try {
+    await Notifications.cancelScheduledNotificationAsync(id);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Cancel all scheduled notifications.
+ */
+export async function safeCancelAllNotifications(): Promise<void> {
+  const Notifications = await loadModule();
+  if (!Notifications) return;
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+  } catch {
+    // ignore
+  }
+}
 
 /**
  * Add a listener for received notifications.

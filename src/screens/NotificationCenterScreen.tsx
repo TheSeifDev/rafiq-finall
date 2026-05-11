@@ -26,7 +26,7 @@ import type { MainStackParamList } from '../navigation/types';
 type NotifCategory = 'medication' | 'low_stock' | 'emergency' | 'chat' | 'general';
 type FilterType = 'all' | 'unread' | 'emergency' | 'medication' | 'chat' | 'other';
 
-interface EnrichedNotification extends AppNotification {
+interface EnrichedNotification extends Omit<AppNotification, 'category'> {
   category: NotifCategory;
 }
 
@@ -229,10 +229,10 @@ export function NotificationCenterScreen(): React.JSX.Element {
   // ── Real-time subscription ──
   useEffect(() => {
     if (!session?.user.id) return;
-    const channel = notificationService.subscribe(session.user.id, (n) => {
+    const unsubscribe = notificationService.subscribe(session.user.id, (n) => {
       setNotifications((prev) => [n, ...prev]);
     });
-    return () => { channel.unsubscribe(); };
+    return unsubscribe;
   }, [session?.user.id]);
 
   // ── Enrich + filter ──
