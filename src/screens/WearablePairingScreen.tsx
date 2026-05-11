@@ -3,7 +3,7 @@
  * Production-ready smartwatch connection management
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -22,209 +22,100 @@ import { AppText } from '../components/ui/AppText';
 import { useTheme } from '../theme/useTheme';
 import { useAppStore } from '../store/app.store';
 import { useAuthStore } from '../store/auth.store';
+import { wearableService, type WearableDevice } from '../services/wearable/ble.service';
+import type { VitalsReading } from '../services/wearable/ble.types';
+import type { SignalQuality } from '../services/wearable/ble.types';
+import { vitalsService } from '../services/vitals.service';
+import { patientService } from '../services/patient.service';
 import { spacing, radius } from '../theme';
 import { translations } from '../constants/translations';
-import { supabase } from '../lib/supabase';
 
-// ─── Types ───────────────────────────────────────────────────
+// ─── Types (using service types) ──────────────────────────────
 
-export interface WearableDevice {
+// ─── Service adapter — wraps wearableService in event-based pattern ──
+
+type WearableDevice_ = {
   id: string;
   name: string;
-  macAddress: string;
-  model?: string;
   rssi?: number;
   batteryLevel?: number;
-  firmwareVersion?: string;
-  status: 'disconnected' | 'connecting' | 'connected' | 'syncing';
-  lastSync?: string;
-  pairedAt?: string;
-}
+  signalQuality?: SignalQuality;
+  lastSeen?: number;
+  isConnected?: boolean;
+};
 
-export interface WearableReading {
-  heartRate: number;
-  oxygenSaturation: number;
-  bloodPressureSystolic: number;
-  bloodPressureDiastolic: number;
+type VitalsReading_ = {
+  heart_rate: number;
+  blood_pressure_systolic: number;
+  blood_pressure_diastolic: number;
+  oxygen_saturation: number;
   temperature: number;
-  steps: number;
-  sleepHours: number;
-  batteryLevel: number;
-  timestamp: string;
+  steps?: number;
+  sleep_hours?: number;
+  timestamp: number;
+};
+
+const pairingListeners = new Set<(event: string, data?: any) => void>();
+
+// Forward wearableService events into the screen's event system
+wearableService.onVitals((reading: VitalsReading_) => {
+  pairingListeners.forEach(l => l('vitals_read', reading));
+});
+
+function emit(event: string, data?: any): void {
+  pairingListeners.forEach(l => l(event, data));
 }
 
-// ─── BLE Manager (Production-ready) ─────────────────────────
-
-class WearableBLEManager {
-  private isScanning = false;
-  private connectedDevice: WearableDevice | null = null;
-  private listeners: Set<(event: string, data?: any) => void> = new Set();
-
-  // Heart Rate Service UUID
-  private readonly HR_SERVICE = '180d';
-  private readonly HR_MEASUREMENT = '2a37';
-
-  // Battery Service UUID
-  private readonly BATTERY_SERVICE = '180f';
-  private readonly BATTERY_LEVEL = '2a19';
-
-  // Device Information Service
-  private readonly DEVICE_INFO_SERVICE = '180a';
-
-  subscribe(listener: (event: string, data?: any) => void): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-
-  private emit(event: string, data?: any): void {
-    this.listeners.forEach(l => l(event, data));
-  }
-
-  async scan(): Promise<WearableDevice[]> {
-    if (this.isScanning) return [];
-    this.isScanning = true;
-    this.emit('scan_start');
-
-    try {
-      // Simulate BLE scanning for Expo Go
-      // In production with a custom build, this uses react-native-ble-plx
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Simulated devices for demo
-      const devices: WearableDevice[] = [
-        {
-          id: 'ble_device_001',
-          name: 'HBand GT5 Pro',
-          macAddress: 'AA:BB:CC:DD:EE:01',
-          model: 'GT5 Pro',
-          rssi: -42,
-          status: 'disconnected',
-        },
-        {
-          id: 'ble_device_002',
-          name: 'Mi Smart Band 6',
-          macAddress: 'AA:BB:CC:DD:EE:02',
-          model: 'Band 6',
-          rssi: -58,
-          status: 'disconnected',
-        },
-        {
-          id: 'ble_device_003',
-          name: 'Fitbit Charge 5',
-          macAddress: 'AA:BB:CC:DD:EE:03',
-          model: 'Charge 5',
-          rssi: -65,
-          status: 'disconnected',
-        },
-      ];
-
-      this.emit('scan_complete', devices);
-      return devices;
-    } finally {
-      this.isScanning = false;
-    }
-  }
-
-  async connect(device: WearableDevice): Promise<void> {
-    this.emit('connecting', device);
-
-    // Simulate connection
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    device.status = 'connected';
-    device.pairedAt = new Date().toISOString();
-    this.connectedDevice = device;
-
-    this.emit('connected', device);
-  }
-
-  async disconnect(): Promise<void> {
-    if (!this.connectedDevice) return;
-
-    this.connectedDevice.status = 'disconnected';
-    this.emit('disconnected', this.connectedDevice);
-    this.connectedDevice = null;
-  }
-
-  async readVitals(): Promise<WearableReading> {
-    if (!this.connectedDevice) {
-      throw new Error('No device connected');
-    }
-
-    this.emit('reading_vitals');
-
-    // Generate realistic vital readings
-    const reading: WearableReading = {
-      heartRate: 65 + Math.floor(Math.random() * 15),
-      oxygenSaturation: 95 + Math.floor(Math.random() * 4),
-      bloodPressureSystolic: 115 + Math.floor(Math.random() * 20),
-      bloodPressureDiastolic: 75 + Math.floor(Math.random() * 15),
-      temperature: 36.4 + Math.random() * 0.8,
-      steps: Math.floor(Math.random() * 5000) + 1000,
-      sleepHours: 5 + Math.random() * 4,
-      batteryLevel: 60 + Math.floor(Math.random() * 40),
-      timestamp: new Date().toISOString(),
-    };
-
-    this.emit('vitals_read', reading);
-    return reading;
-  }
-
-  async syncData(): Promise<void> {
-    if (!this.connectedDevice) return;
-
-    this.emit('sync_start');
-    this.connectedDevice.status = 'syncing';
-
-    // Simulate sync
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    this.connectedDevice.status = 'connected';
-    this.connectedDevice.lastSync = new Date().toISOString();
-    this.emit('sync_complete');
-  }
-
-  async getBatteryLevel(): Promise<number> {
-    // Simulated battery reading
-    return 50 + Math.floor(Math.random() * 50);
-  }
-
-  getConnectedDevice(): WearableDevice | null {
-    return this.connectedDevice;
-  }
-
-  isConnected(): boolean {
-    return this.connectedDevice?.status === 'connected';
-  }
-
-  isScanningActive(): boolean {
-    return this.isScanning;
+async function pairingScan(): Promise<WearableDevice_[]> {
+  emit('scan_start');
+  try {
+    const devices = await wearableService.scan();
+    emit('scan_complete', devices);
+    return devices;
+  } finally {
+    emit('scan_end');
   }
 }
 
-// Singleton BLE manager
-const bleManager = new WearableBLEManager();
+async function pairingConnect(deviceId: string, deviceName: string): Promise<void> {
+  emit('connecting', { id: deviceId, name: deviceName });
+  await wearableService.connect(deviceId);
+  emit('connected', { id: deviceId, name: deviceName });
+}
+
+async function pairingReadVitals(): Promise<VitalsReading_> {
+  return wearableService.readVitals();
+}
+
+async function pairingDisconnect(): Promise<void> {
+  await wearableService.disconnect();
+  emit('disconnected');
+}
 
 // ─── Device Card Component ─────────────────────────────────────
 
 function DeviceCard({
   device,
+  status,
   onConnect,
   onDisconnect,
+  onSync,
   colors,
   darkMode,
   isAr,
   t,
 }: {
-  device: WearableDevice;
+  device: WearableDevice_;
+  status: 'disconnected' | 'connecting' | 'connected' | 'syncing';
   onConnect: () => void;
   onDisconnect: () => void;
+  onSync: () => void;
   colors: any;
   darkMode: boolean;
   isAr: boolean;
   t: any;
 }) {
-  const statusColors = {
+  const statusColors: Record<string, string> = {
     disconnected: colors.textSecondary,
     connecting: colors.warning,
     connected: colors.success,
@@ -246,50 +137,34 @@ function DeviceCard({
         </View>
         <View style={styles.deviceInfo}>
           <AppText style={[styles.deviceName, { color: colors.textPrimary }]}>{device.name}</AppText>
-          <AppText style={[styles.deviceMac, { color: colors.textSecondary }]}>{device.macAddress}</AppText>
-          {device.model && (
-            <AppText style={[styles.deviceModel, { color: colors.textSecondary }]}>{device.model}</AppText>
+          {device.rssi !== undefined && (
+            <View style={styles.deviceStats}>
+              <Ionicons name="wifi" size={12} color={colors.textSecondary} />
+              <AppText style={[styles.statValue, { color: colors.textSecondary }]}>
+                {device.rssi} dBm
+              </AppText>
+              {device.batteryLevel !== undefined && (
+                <>
+                  <Ionicons name="battery-full" size={12} color={colors.textSecondary} />
+                  <AppText style={[styles.statValue, { color: colors.textSecondary }]}>
+                    {device.batteryLevel}%
+                  </AppText>
+                </>
+              )}
+            </View>
           )}
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: statusColors[device.status] + '20' }]}>
-          <View style={[styles.statusDot, { backgroundColor: statusColors[device.status] }]} />
-          <AppText style={[styles.statusText, { color: statusColors[device.status] }]}>
-            {statusLabels[device.status]}
+        <View style={[styles.statusBadge, { backgroundColor: statusColors[status] + '20' }]}>
+          <View style={[styles.statusDot, { backgroundColor: statusColors[status] }]} />
+          <AppText style={[styles.statusText, { color: statusColors[status] }]}>
+            {statusLabels[status]}
           </AppText>
         </View>
       </View>
 
-      {/* Signal & Battery */}
-      <View style={styles.deviceStats}>
-        {device.rssi !== undefined && (
-          <View style={styles.statItem}>
-            <Ionicons name="wifi" size={14} color={colors.textSecondary} />
-            <AppText style={[styles.statValue, { color: colors.textSecondary }]}>
-              {device.rssi} dBm
-            </AppText>
-          </View>
-        )}
-        {device.batteryLevel !== undefined && (
-          <View style={styles.statItem}>
-            <Ionicons name="battery-full" size={14} color={colors.textSecondary} />
-            <AppText style={[styles.statValue, { color: colors.textSecondary }]}>
-              {device.batteryLevel}%
-            </AppText>
-          </View>
-        )}
-        {device.lastSync && (
-          <View style={styles.statItem}>
-            <Ionicons name="time" size={14} color={colors.textSecondary} />
-            <AppText style={[styles.statValue, { color: colors.textSecondary }]}>
-              {new Date(device.lastSync).toLocaleTimeString()}
-            </AppText>
-          </View>
-        )}
-      </View>
-
       {/* Actions */}
       <View style={styles.deviceActions}>
-        {device.status === 'disconnected' ? (
+        {status === 'disconnected' ? (
           <TouchableOpacity
             activeOpacity={0.8}
             onPress={onConnect}
@@ -298,7 +173,7 @@ function DeviceCard({
             <Ionicons name="bluetooth-outline" size={16} color="#FFFFFF" />
             <AppText style={styles.connectBtnText}>{t.connect}</AppText>
           </TouchableOpacity>
-        ) : device.status === 'connected' ? (
+        ) : status === 'connected' ? (
           <>
             <TouchableOpacity
               activeOpacity={0.8}
@@ -310,14 +185,14 @@ function DeviceCard({
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => {}}
+              onPress={onSync}
               style={[styles.syncBtn, { backgroundColor: colors.success }]}
             >
               <Ionicons name="sync" size={14} color="#FFFFFF" />
               <AppText style={styles.syncBtnText}>{isAr ? 'مزامنة' : 'Sync'}</AppText>
             </TouchableOpacity>
           </>
-        ) : device.status === 'connecting' ? (
+        ) : status === 'connecting' ? (
           <ActivityIndicator color={colors.primary} />
         ) : null}
       </View>
@@ -417,14 +292,14 @@ function VitalsPreview({ colors, darkMode, isAr, reading }: {
   colors: any;
   darkMode: boolean;
   isAr: boolean;
-  reading: WearableReading | null;
+  reading: VitalsReading | null;
 }) {
   if (!reading) return null;
 
   const vitals = [
-    { icon: 'heart', label: isAr ? 'نبض القلب' : 'Heart Rate', value: `${reading.heartRate}`, unit: 'bpm', color: colors.danger },
-    { icon: 'water', label: isAr ? 'الأكسجين' : 'SpO2', value: `${reading.oxygenSaturation}`, unit: '%', color: colors.primary },
-    { icon: 'fitness', label: isAr ? 'الضغط' : 'Blood Pressure', value: `${reading.bloodPressureSystolic}/${reading.bloodPressureDiastolic}`, unit: 'mmHg', color: colors.warning },
+    { icon: 'heart', label: isAr ? 'نبض القلب' : 'Heart Rate', value: `${reading.heart_rate}`, unit: 'bpm', color: colors.danger },
+    { icon: 'water', label: isAr ? 'الأكسجين' : 'SpO2', value: `${reading.oxygen_saturation}`, unit: '%', color: colors.primary },
+    { icon: 'fitness', label: isAr ? 'الضغط' : 'Blood Pressure', value: `${reading.blood_pressure_systolic}/${reading.blood_pressure_diastolic}`, unit: 'mmHg', color: colors.warning },
     { icon: 'thermometer', label: isAr ? 'الحرارة' : 'Temperature', value: `${reading.temperature.toFixed(1)}`, unit: '°C', color: colors.success },
   ];
 
@@ -457,12 +332,12 @@ function VitalsPreview({ colors, darkMode, isAr, reading }: {
       <View style={styles.activityRow}>
         <View style={styles.activityItem}>
           <Ionicons name="footsteps" size={16} color={colors.textSecondary} />
-          <AppText style={[styles.activityValue, { color: colors.textPrimary }]}>{reading.steps.toLocaleString()}</AppText>
+          <AppText style={[styles.activityValue, { color: colors.textPrimary }]}>{(reading.steps ?? 0).toLocaleString()}</AppText>
           <AppText style={[styles.activityLabel, { color: colors.textSecondary }]}>{isAr ? 'خطوة' : 'steps'}</AppText>
         </View>
         <View style={styles.activityItem}>
           <Ionicons name="moon" size={16} color={colors.textSecondary} />
-          <AppText style={[styles.activityValue, { color: colors.textPrimary }]}>{reading.sleepHours.toFixed(1)}</AppText>
+          <AppText style={[styles.activityValue, { color: colors.textPrimary }]}>{(reading.sleep_hours ?? 0).toFixed(1)}</AppText>
           <AppText style={[styles.activityLabel, { color: colors.textSecondary }]}>{isAr ? 'ساعة نوم' : 'hours sleep'}</AppText>
         </View>
       </View>
@@ -480,42 +355,48 @@ export function WearablePairingScreen(): React.JSX.Element {
   const t = translations[language];
   const isAr = language === 'ar';
 
-  const [devices, setDevices] = useState<WearableDevice[]>([]);
+  const [devices, setDevices] = useState<WearableDevice_[]>([]);
   const [scanning, setScanning] = useState(false);
-  const [connectedDevice, setConnectedDevice] = useState<WearableDevice | null>(null);
-  const [liveReading, setLiveReading] = useState<WearableReading | null>(null);
+  const [connectedDeviceId, setConnectedDeviceId] = useState<string | null>(null);
+  const [connectedDeviceName, setConnectedDeviceName] = useState<string | null>(null);
+  const [liveReading, setLiveReading] = useState<VitalsReading | null>(null);
   const [loadingVitals, setLoadingVitals] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
-  // Subscribe to BLE events
+  // Subscribe to wearable events
   useEffect(() => {
-    const unsubscribe = bleManager.subscribe((event, data) => {
+    const unsubscribe = pairingListeners.add((event, data) => {
       switch (event) {
         case 'scan_complete':
           setDevices(data as WearableDevice[]);
           setScanning(false);
           break;
         case 'connected':
-          setConnectedDevice(data as WearableDevice);
+          const connData = data as { id: string; name: string };
+          setConnectedDeviceId(connData.id);
+          setConnectedDeviceName(connData.name);
+          setDevices(prev => prev.map(d => d.id === connData.id ? { ...d, isConnected: true } : d));
           break;
         case 'disconnected':
-          setConnectedDevice(null);
+          setConnectedDeviceId(null);
+          setConnectedDeviceName(null);
           setLiveReading(null);
+          setDevices(prev => prev.map(d => ({ ...d, isConnected: false })));
           break;
         case 'vitals_read':
-          setLiveReading(data as WearableReading);
+          setLiveReading(data as VitalsReading);
           setLoadingVitals(false);
           break;
       }
     });
-
-    return () => unsubscribe();
+    return () => { pairingListeners.delete(unsubscribe as any); };
   }, []);
 
   const handleScan = useCallback(async () => {
     setScanning(true);
     setDevices([]);
     try {
-      const found = await bleManager.scan();
+      const found = await pairingScan();
       setDevices(found);
     } catch (err) {
       Alert.alert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل البحث عن الأجهزة' : 'Failed to scan devices');
@@ -524,78 +405,76 @@ export function WearablePairingScreen(): React.JSX.Element {
     }
   }, [isAr]);
 
-  const handleConnect = useCallback(async (device: WearableDevice) => {
+  const handleConnect = useCallback(async (device: WearableDevice_) => {
     try {
-      const updatedDevice = { ...device, status: 'connecting' as const };
-      setDevices(prev => prev.map(d => d.id === device.id ? updatedDevice : d));
-
-      await bleManager.connect(device);
-
-      const connected = { ...device, status: 'connected' as const };
-      setConnectedDevice(connected);
-      setDevices(prev => prev.map(d => d.id === device.id ? connected : d));
-
+      setDevices(prev => prev.map(d => d.id === device.id ? { ...d } : d));
+      await pairingConnect(device.id, device.name);
+      setConnectedDeviceId(device.id);
+      setConnectedDeviceName(device.name);
       // Auto-read vitals on connect
       setLoadingVitals(true);
-      const reading = await bleManager.readVitals();
+      const reading = await pairingReadVitals();
       setLiveReading(reading);
     } catch (err) {
       Alert.alert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل الاتصال' : 'Connection failed');
-      setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: 'disconnected' as const } : d));
     }
   }, [isAr]);
 
   const handleDisconnect = useCallback(async () => {
     try {
-      await bleManager.disconnect();
-      setConnectedDevice(null);
+      await pairingDisconnect();
+      setConnectedDeviceId(null);
+      setConnectedDeviceName(null);
       setLiveReading(null);
-      setDevices(prev => prev.map(d => ({ ...d, status: 'disconnected' as const })));
+      setDevices(prev => prev.map(d => ({ ...d, isConnected: false })));
     } catch (err) {
       Alert.alert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل قطع الاتصال' : 'Disconnect failed');
     }
   }, [isAr]);
 
   const handleSync = useCallback(async () => {
-    if (!connectedDevice) return;
+    if (!connectedDeviceId || !liveReading) return;
     try {
-      setConnectedDevice(prev => prev ? { ...prev, status: 'syncing' as const } : null);
-      await bleManager.syncData();
-      setConnectedDevice(prev => prev ? { ...prev, status: 'connected' as const, lastSync: new Date().toISOString() } : null);
-
-      // Save to Supabase
-      if (session?.user.id && liveReading) {
-        await supabase.from('vitals').insert({
-          user_id: session.user.id,
-          heart_rate: liveReading.heartRate,
-          blood_pressure_systolic: liveReading.bloodPressureSystolic,
-          blood_pressure_diastolic: liveReading.bloodPressureDiastolic,
-          oxygen_saturation: liveReading.oxygenSaturation,
-          temperature: liveReading.temperature,
-          source: 'smartwatch',
-          recorded_at: liveReading.timestamp,
-        });
+      setSyncing(true);
+      const reading = await pairingReadVitals();
+      setLiveReading(reading);
+      // Save to Supabase via service
+      if (session?.user.id) {
+        const profile = await patientService.getProfile(session.user.id);
+        if (profile) {
+          await vitalsService.saveVitals({
+            patient_id: profile.id,
+            heart_rate: reading.heart_rate,
+            blood_pressure_systolic: reading.blood_pressure_systolic,
+            blood_pressure_diastolic: reading.blood_pressure_diastolic,
+            oxygen_saturation: reading.oxygen_saturation,
+            temperature: reading.temperature,
+            steps: reading.steps ?? null,
+            source: 'smartwatch',
+            recorded_at: new Date(reading.timestamp).toISOString(),
+          });
+        }
       }
-
       Alert.alert(isAr ? 'تم' : 'Done', isAr ? 'تمت المزامنة بنجاح' : 'Sync completed');
     } catch (err) {
       Alert.alert(isAr ? 'خطأ' : 'Error', isAr ? 'فشلت المزامنة' : 'Sync failed');
-      setConnectedDevice(prev => prev ? { ...prev, status: 'connected' as const } : null);
+    } finally {
+      setSyncing(false);
     }
-  }, [connectedDevice, liveReading, session?.user.id, isAr]);
+  }, [connectedDeviceId, liveReading, session?.user.id, isAr]);
 
   const handleRefreshVitals = useCallback(async () => {
-    if (!connectedDevice) return;
+    if (!connectedDeviceId) return;
     setLoadingVitals(true);
     try {
-      const reading = await bleManager.readVitals();
+      const reading = await pairingReadVitals();
       setLiveReading(reading);
     } catch (err) {
       Alert.alert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل قراءة البيانات' : 'Failed to read vitals');
     } finally {
       setLoadingVitals(false);
     }
-  }, [connectedDevice, isAr]);
+  }, [connectedDeviceId, isAr]);
 
   return (
     <Screen style={{ backgroundColor: colors.background }}>
@@ -609,7 +488,7 @@ export function WearablePairingScreen(): React.JSX.Element {
         showsVerticalScrollIndicator={false}
       >
         {/* Connected Device Status */}
-        {connectedDevice && (
+        {connectedDeviceName && (
           <View style={[styles.connectedBanner, { backgroundColor: colors.success + '12', borderColor: colors.success + '30' }]}>
             <View style={[styles.connectedIcon, { backgroundColor: colors.success + '20' }]}>
               <Ionicons name="checkmark-circle" size={24} color={colors.success} />
@@ -619,17 +498,21 @@ export function WearablePairingScreen(): React.JSX.Element {
                 {isAr ? 'الساعة متصلة' : 'Smartwatch Connected'}
               </AppText>
               <AppText style={[styles.connectedSub, { color: colors.textSecondary }]}>
-                {connectedDevice.name} • {connectedDevice.macAddress}
+                {connectedDeviceName}
               </AppText>
             </View>
-            <TouchableOpacity activeOpacity={0.7} onPress={handleSync}>
-              <Ionicons name="sync" size={22} color={colors.primary} />
+            <TouchableOpacity activeOpacity={0.7} onPress={handleSync} disabled={syncing}>
+              {syncing ? (
+                <ActivityIndicator color={colors.primary} size="small" />
+              ) : (
+                <Ionicons name="sync" size={22} color={colors.primary} />
+              )}
             </TouchableOpacity>
           </View>
         )}
 
         {/* Live Vitals Preview */}
-        {connectedDevice && (
+        {connectedDeviceName && (
           <VitalsPreview
             colors={colors}
             darkMode={darkMode}
@@ -676,8 +559,10 @@ export function WearablePairingScreen(): React.JSX.Element {
               <DeviceCard
                 key={device.id}
                 device={device}
+                status={device.isConnected ? 'connected' : 'disconnected'}
                 onConnect={() => handleConnect(device)}
                 onDisconnect={handleDisconnect}
+                onSync={handleSync}
                 colors={colors}
                 darkMode={darkMode}
                 isAr={isAr}
@@ -688,7 +573,7 @@ export function WearablePairingScreen(): React.JSX.Element {
         )}
 
         {/* No Devices Found */}
-        {!scanning && devices.length === 0 && !connectedDevice && (
+        {!scanning && devices.length === 0 && !connectedDeviceId && (
           <View style={styles.emptyState}>
             <Ionicons name="bluetooth-outline" size={48} color={colors.textSecondary + '40'} />
             <AppText style={[styles.emptyText, { color: colors.textSecondary }]}>

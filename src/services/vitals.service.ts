@@ -8,6 +8,7 @@ export type VitalsRecord = {
   blood_pressure_diastolic: number | null;
   oxygen_saturation: number | null;
   temperature: number | null;
+  steps: number | null;
   source: 'manual' | 'smartwatch' | 'bluetooth';
   recorded_at: string;
 };

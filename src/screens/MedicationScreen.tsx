@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, Text, View,  TouchableOpacity, 
-  FlatList, Modal, TextInput, ActivityIndicator, Alert 
+import {
+  StyleSheet, Text, View, TouchableOpacity,
+  FlatList, Modal, TextInput, ActivityIndicator, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase';
+import { medicationService } from '../services/medication.service';
+import { patientService } from '../services/patient.service';
+import { useAuthStore } from '../store/auth.store';
 
 interface Medication {
   id: string;
@@ -22,11 +24,11 @@ interface Props {
 }
 
 export default function MedicationScreen({ onBack, isDarkMode, lang }: Props) {
+  const session = useAuthStore((s) => s.session);
   const [meds, setMeds] = useState<Medication[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
-  
-  // States للنموذج الجديد
+
   const [newName, setNewName] = useState('');
   const [newDosage, setNewDosage] = useState('');
   const [newTime, setNewTime] = useState('09:00');
@@ -44,23 +46,21 @@ export default function MedicationScreen({ onBack, isDarkMode, lang }: Props) {
   }, []);
 
   const fetchMeds = async () => {
+    if (!session?.user.id) { setLoading(false); return; }
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: patient } = await supabase.from('patients').select('id').eq('user_id', user.id).single();
-      
-      if (patient) {
-        const { data, error } = await supabase
-          .from('medications')
-          .select('*')
-          .eq('patient_id', patient.id)
-          .order('reminder_time', { ascending: true });
-        
-        if (data) setMeds(data);
-      }
+      const profile = await patientService.getProfile(session.user.id);
+      if (!profile) { setLoading(false); return; }
+      const data = await medicationService.getMedications(profile.id);
+      // Map service Medication type to screen Medication type
+      setMeds(data.map(m => ({
+        id: m.id,
+        med_name: m.name,
+        dosage: m.dosage,
+        reminder_time: (m.time_of_day?.[0] ?? '09:00'),
+        is_active: m.is_active,
+      })));
     } catch (err) {
-      console.log(err);
+      console.warn('[MedicationScreen] fetchMeds error:', err);
     } finally {
       setLoading(false);
     }
@@ -68,27 +68,25 @@ export default function MedicationScreen({ onBack, isDarkMode, lang }: Props) {
 
   const addMedication = async () => {
     if (!newName) return Alert.alert(isRTL ? "خطأ" : "Error", isRTL ? "برجاء كتابة اسم الدواء" : "Please enter med name");
+    if (!session?.user.id) return;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-const { data: patient } = await supabase.from('patients').select('id').eq('user_id', user?.id).single();
-      const { error } = await supabase.from('medications').insert([
-        { 
-          patient_id: patient?.id, 
-          med_name: newName, 
-          dosage: newDosage, 
-          reminder_time: newTime 
-        }
-      ]);
-
-      if (!error) {
-        setModalVisible(false);
-        setNewName('');
-        setNewDosage('');
-        fetchMeds();
-      }
+      const profile = await patientService.getProfile(session.user.id);
+      if (!profile) return;
+      await medicationService.addMedication({
+        patient_id: profile.id,
+        name: newName,
+        dosage: newDosage,
+        frequency: 'daily',
+        time_of_day: [newTime],
+        is_active: true,
+      } as any);
+      setModalVisible(false);
+      setNewName('');
+      setNewDosage('');
+      fetchMeds();
     } catch (err) {
-      console.log(err);
+      console.warn('[MedicationScreen] addMedication error:', err);
     }
   };
 
@@ -106,14 +104,14 @@ const { data: patient } = await supabase.from('patients').select('id').eq('user_
       {loading ? (
         <ActivityIndicator size="large" color="#00C2FF" style={{ marginTop: 50 }} />
       ) : (
-        <FlatList 
+        <FlatList
           data={meds}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ padding: 20 }}
           renderItem={({ item }) => (
             <View style={[styles.medCard, { backgroundColor: theme.card, borderColor: theme.border, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
               <View style={[styles.timeBadge, { backgroundColor: isDarkMode ? '#1A2332' : '#F1F5F9' }]}>
-                <Text style={{ color: '#00C2FF', fontWeight: 'bold' }}>{item.reminder_time.substring(0,5)}</Text>
+                <Text style={{ color: '#00C2FF', fontWeight: 'bold' }}>{item.reminder_time.substring(0, 5)}</Text>
               </View>
               <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start', marginHorizontal: 15 }}>
                 <Text style={[styles.medName, { color: theme.text }]}>{item.med_name}</Text>
@@ -131,8 +129,8 @@ const { data: patient } = await supabase.from('patients').select('id').eq('user_
       )}
 
       {/* Button Add */}
-      <TouchableOpacity 
-        style={styles.fab} 
+      <TouchableOpacity
+        style={styles.fab}
         onPress={() => setModalVisible(true)}
       >
         <MaterialCommunityIcons name="plus" size={32} color="#FFF" />
@@ -143,22 +141,22 @@ const { data: patient } = await supabase.from('patients').select('id').eq('user_
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>{isRTL ? 'إضافة دواء جديد' : 'Add New Medicine'}</Text>
-            
-            <TextInput 
+
+            <TextInput
               placeholder={isRTL ? "اسم الدواء" : "Medicine Name"}
               placeholderTextColor="#94A3B8"
               style={[styles.input, { color: theme.text, borderColor: theme.border, textAlign: isRTL ? 'right' : 'left' }]}
               value={newName}
               onChangeText={setNewName}
             />
-            <TextInput 
+            <TextInput
               placeholder={isRTL ? "الجرعة (مثلاً: حبة واحدة)" : "Dosage (e.g. 1 Pill)"}
               placeholderTextColor="#94A3B8"
               style={[styles.input, { color: theme.text, borderColor: theme.border, textAlign: isRTL ? 'right' : 'left' }]}
               value={newDosage}
               onChangeText={setNewDosage}
             />
-            <TextInput 
+            <TextInput
               placeholder={isRTL ? "الوقت (09:00)" : "Time (09:00)"}
               placeholderTextColor="#94A3B8"
               style={[styles.input, { color: theme.text, borderColor: theme.border, textAlign: isRTL ? 'right' : 'left' }]}

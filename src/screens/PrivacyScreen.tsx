@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
 import { Screen } from '../components/ui/Screen';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
 import { AppText } from '../components/ui/AppText';
@@ -19,9 +18,10 @@ import { useTheme } from '../theme/useTheme';
 import { useAppStore } from '../store/app.store';
 import { useAuthStore } from '../store/auth.store';
 import { translations } from '../constants/translations';
-import { supabase } from '../lib/supabase';
 import { patientService } from '../services/patient.service';
 import { exportHealthData } from '../services/export.service';
+import { dataService } from '../services/data.service';
+import { safeRequestPermissions } from '../lib/notifications/notificationSafety';
 import type { ProfileStackScreenProps } from '../navigation/types';
 
 type Props = ProfileStackScreenProps<'Privacy'>;
@@ -83,8 +83,8 @@ export function PrivacyScreen({ navigation }: Props): React.JSX.Element {
       } catch { /* Expo Go safe */ }
 
       try {
-        const { status: notifStatus } = await Notifications.getPermissionsAsync();
-        setNotifEnabled(notifStatus === 'granted');
+        const perm = await safeRequestPermissions();
+        setNotifEnabled(perm.granted);
       } catch { /* Expo Go safe */ }
     })();
   }, []);
@@ -111,9 +111,9 @@ export function PrivacyScreen({ navigation }: Props): React.JSX.Element {
   // ── Toggle Notification Permission ──
   const handleNotifToggle = useCallback(async (val: boolean) => {
     if (val) {
-      const { status } = await Notifications.requestPermissionsAsync();
-      setNotifEnabled(status === 'granted');
-      if (status !== 'granted') {
+      const perm = await safeRequestPermissions();
+      setNotifEnabled(perm.granted);
+      if (!perm.granted) {
         Alert.alert(
           isAr ? 'مرفوض' : 'Denied',
           isAr ? 'يرجى تفعيل الإشعارات من الإعدادات' : 'Please enable notifications in Settings',
@@ -158,21 +158,7 @@ export function PrivacyScreen({ navigation }: Props): React.JSX.Element {
             setDeleting(true);
             try {
               const userId = session.user.id;
-              const patientId = await patientService.getPatientId(userId);
-
-              if (patientId) {
-                // Delete dependent rows first (FK order)
-                await supabase.from('vitals').delete().eq('patient_id', patientId);
-                await supabase.from('medications').delete().eq('patient_id', patientId);
-                await supabase.from('patient_conditions').delete().eq('patient_id', patientId);
-                await supabase.from('emergency_contacts').delete().eq('patient_id', patientId);
-                await supabase.from('patients').delete().eq('id', patientId);
-              }
-
-              // Delete notifications
-              await supabase.from('notifications').delete().eq('user_id', userId);
-
-              // Sign out
+              await dataService.deleteAllUserData(userId);
               await signOut();
 
               Alert.alert(

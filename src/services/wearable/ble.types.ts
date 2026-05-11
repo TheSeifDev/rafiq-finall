@@ -27,6 +27,8 @@ export interface VitalsReading {
   blood_pressure_diastolic: number;
   oxygen_saturation: number;
   temperature: number;
+  steps?: number;
+  sleep_hours?: number;
   timestamp: number;
 }
 

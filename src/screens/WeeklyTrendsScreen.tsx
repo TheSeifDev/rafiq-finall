@@ -19,6 +19,10 @@ import { useTheme } from '../theme/useTheme';
 import { useAppStore } from '../store/app.store';
 import { spacing, radius } from '../theme';
 import { translations } from '../constants/translations';
+import { vitalsService } from '../services/vitals.service';
+import { patientService } from '../services/patient.service';
+import { simulator } from '../dev/simulator';
+import { useAuthStore } from '../store/auth.store';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const CHART_W = SCREEN_W - spacing.lg * 2 - 16;
@@ -55,37 +59,23 @@ interface WeeklyData {
   aiObservations: string[];
 }
 
-// ─── Data generation ─────────────────────────────────────────
+// ─── Build weekly data from simulator (only when no real data) ──
 
-function generateWeekData(baseHR = 74, isAr = false): WeeklyData {
-  const dayNames = isAr
-    ? ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
-    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-  const days: DailyVitals[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-
-    const baseVariance = Math.sin(i * 0.5) * 4; // smooth weekly wave
-    const dayVariance = (Math.random() - 0.5) * 6;
-
-    days.push({
-      day: d.toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
-        weekday: 'short', month: 'short', day: 'numeric',
-      }),
-      dayShort: dayNames[d.getDay()],
-      dayIndex: d.getDay(),
-      hr: Math.round(Math.max(58, Math.min(98, baseHR + baseVariance + dayVariance))),
-      spo2: Math.round(Math.max(95, Math.min(100, 97.5 + (Math.random() - 0.5) * 3))),
-      sleep: parseFloat(Math.max(5, Math.min(9, 7 + Math.sin(i * 0.8) * 0.8 + (Math.random() - 0.5) * 1.2)).toFixed(1)),
-      steps: Math.round(Math.max(2000, Math.min(12000, 6500 + baseVariance * 200 + dayVariance * 150))),
-      bpSys: Math.round(Math.max(105, Math.min(140, 118 + baseVariance * 0.8 + dayVariance * 1.5))),
-      bpDia: Math.round(Math.max(62, Math.min(90, 76 + baseVariance * 0.5 + dayVariance))),
-      temp: parseFloat(Math.max(36.2, Math.min(37.1, 36.6 + (Math.random() - 0.5) * 0.4)).toFixed(1)),
-      stressLevel: Math.round(Math.max(10, Math.min(90, 42 + (Math.random() - 0.5) * 25))),
-    });
-  }
+function buildFromSimulator(isAr = false): WeeklyData {
+  const trends = simulator.generateWeeklyTrends('sedentary', isAr);
+  const days: DailyVitals[] = trends.map(t => ({
+    day: t.day,
+    dayShort: t.dayShort,
+    dayIndex: t.dayIndex,
+    hr: t.hr,
+    spo2: t.spo2,
+    sleep: t.sleep,
+    steps: t.steps,
+    bpSys: t.bpSys,
+    bpDia: t.bpDia,
+    temp: t.temp,
+    stressLevel: t.stressLevel,
+  }));
 
   const avgHR = Math.round(days.reduce((s, d) => s + d.hr, 0) / 7);
   const avgSpo2 = Math.round(days.reduce((s, d) => s + d.spo2, 0) / 7 * 10) / 10;
@@ -98,6 +88,9 @@ function generateWeekData(baseHR = 74, isAr = false): WeeklyData {
   const activityScore = Math.round(avgSteps / 100);
   const sleepScore = Math.round(avgSleep / 9 * 100);
 
+  const trend: 'up' | 'down' | 'stable' = simulator.getPersona() === 'athlete' ? 'up'
+    : simulator.getPersona() === 'elderly' ? 'down' : 'stable';
+
   const aiObservations = [
     isAr
       ? `متوسط نبض القلب ${avgHR} نبضة/دقيقة — مستقر ضمن النطاق الصحي`
@@ -108,9 +101,6 @@ function generateWeekData(baseHR = 74, isAr = false): WeeklyData {
     avgSleep >= 7
       ? (isAr ? `النوم ${avgSleep.toFixed(1)}h — ضمن النطاق الموصى به` : `Sleep ${avgSleep.toFixed(1)}h — within recommended range`)
       : (isAr ? `النوم ${avgSleep.toFixed(1)}h — يحتاج تحسين` : `Sleep ${avgSleep.toFixed(1)}h — could be improved`),
-    fallRiskScore > 45
-      ? (isAr ? 'خطر السقوط مرتفع — يُنصح بزيد النشاط البدني' : 'Elevated fall risk — increase physical activity')
-      : (isAr ? 'مؤشر خطر السقوط ضمن المعدل الطبيعي' : 'Fall risk indicator is normal'),
   ];
 
   return {
@@ -265,14 +255,14 @@ export function WeeklyTrendsScreen(): React.JSX.Element {
   const language = useAppStore((s) => s.language);
   const isAr = language === 'ar';
 
-  const [data, setData] = useState<WeeklyData>(() => generateWeekData(74, isAr));
+  const [data, setData] = useState<WeeklyData>(() => buildFromSimulator(isAr));
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'week' | 'month'>('week');
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await new Promise(r => setTimeout(r, 800));
-    setData(generateWeekData(74 + Math.round(Math.random() * 6 - 3), isAr));
+    setData(buildFromSimulator(isAr));
     setRefreshing(false);
   }, [isAr]);
 
