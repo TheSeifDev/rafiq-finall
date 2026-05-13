@@ -1,14 +1,16 @@
-import React, { useEffect, useRef, memo } from "react";
-import { View, Pressable, StyleSheet, Platform, Dimensions, Animated } from "react-native";
+/**
+ * BottomTabBar - Production-grade iOS-style navigation
+ * Real BlurView, proper alignment, accessible colors
+ */
+import React, { memo, useCallback } from "react";
+import { View, Pressable, StyleSheet, Platform } from "react-native";
+import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { AppText } from "./AppText";
 import { useTheme } from "../../theme/useTheme";
 import { useAppStore } from "../../store/app.store";
 import { translations } from "../../constants/translations";
-import { radius } from "../../theme";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const TABS: Record<
   string,
@@ -37,10 +39,9 @@ const TABS: Record<
   },
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   PREMIUM TAB BUTTON COMPONENT
-   Animated active state with scale and glow effects
-═══════════════════════════════════════════════════════════════ */
+/**
+ * Tab Button - Clean, production-ready, no infinite animations
+ */
 const TabButton = memo(function TabButton({
   route,
   isFocused,
@@ -56,83 +57,25 @@ const TabButton = memo(function TabButton({
   onPress: () => void;
   colors: any;
 }) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (isFocused) {
-      Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: 1.1,
-          useNativeDriver: true,
-          friction: 8,
-          tension: 100,
-        }),
-        Animated.timing(glowAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          friction: 8,
-        }),
-        Animated.timing(glowAnim, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]).start();
+  const handlePress = useCallback(() => {
+    if (!isFocused) {
+      onPress();
     }
-  }, [isFocused, scaleAnim, glowAnim]);
+  }, [isFocused, onPress]);
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       style={styles.tabButton}
       android_ripple={{ color: colors.primarySoft, borderless: true }}
     >
-      {/* Animated active indicator */}
-      {isFocused && (
-        <Animated.View
-          style={[
-            styles.activeIndicator,
-            {
-              backgroundColor: colors.primary,
-              transform: [{ scale: scaleAnim }],
-              opacity: glowAnim,
-            },
-          ]}
-        />
-      )}
-
       {/* Icon */}
       <View style={styles.iconContainer}>
-        <Animated.View
-          style={{
-            transform: [{ scale: isFocused ? 1.15 : 1 }],
-          }}
-        >
-          <Ionicons
-            name={isFocused ? tab.active : tab.inactive}
-            size={22}
-            color={isFocused ? colors.primary : colors.textSecondary}
-          />
-        </Animated.View>
-
-        {/* Active dot indicator */}
-        {isFocused && (
-          <Animated.View
-            style={[
-              styles.activeDot,
-              { backgroundColor: colors.primary },
-            ]}
-          />
-        )}
+        <Ionicons
+          name={isFocused ? tab.active : tab.inactive}
+          size={24}
+          color={isFocused ? colors.primary : colors.textSecondary}
+        />
       </View>
 
       {/* Label */}
@@ -141,9 +84,10 @@ const TabButton = memo(function TabButton({
           styles.label,
           {
             color: isFocused ? colors.primary : colors.textSecondary,
-            fontWeight: isFocused ? "700" : "500",
+            fontWeight: isFocused ? "600" : "500",
           },
         ]}
+        numberOfLines={1}
       >
         {label}
       </AppText>
@@ -151,77 +95,70 @@ const TabButton = memo(function TabButton({
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   PREMIUM BOTTOM TAB BAR
-   Glass morphism, animated indicators, haptic-friendly spacing
-═══════════════════════════════════════════════════════════════ */
+/**
+ * Bottom Tab Bar - Premium iOS-style navigation
+ */
 export function BottomTabBar({
   state,
   navigation,
 }: BottomTabBarProps): React.JSX.Element {
-  const { colors } = useTheme();
+  const { colors, darkMode } = useTheme();
   const language = useAppStore((s) => s.language);
   const t = translations[language];
+
+  const bottomPadding = Platform.OS === "ios" ? 28 : 16;
 
   return (
     <View
       style={[
         styles.wrapper,
         {
-          paddingBottom: Platform.OS === "ios" ? 28 : 16,
+          paddingBottom: bottomPadding,
         },
       ]}
     >
-      {/* Premium floating glass bar */}
-      <View
-        style={[
-          styles.bar,
-          {
-            backgroundColor: colors.surface + "F5",
-            borderColor: colors.border + "60",
-          },
-        ]}
+      {/* Background blur */}
+      <BlurView
+        intensity={darkMode ? 30 : 80}
+        tint={darkMode ? "dark" : "light"}
+        style={styles.blurWrapper}
       >
-        {/* Gradient overlay for glass effect */}
         <View
           style={[
-            styles.glassOverlay,
+            styles.bar,
             {
-              backgroundColor: colors.primary + "08",
+              backgroundColor: darkMode
+                ? colors.surface + "E6"
+                : colors.surface + "F2",
+              borderColor: colors.border + "40",
             },
           ]}
-        />
+        >
+          {state.routes.map((route, index) => {
+            const isFocused = state.index === index;
+            const tab = TABS[route.name];
+            if (!tab) return null;
 
-        {state.routes.map((route, index) => {
-          const isFocused = state.index === index;
-          const tab = TABS[route.name];
-          if (!tab) return null;
+            const label = (t as any)[tab.labelKey] ?? route.name;
 
-          const label = (t as any)[tab.labelKey] ?? route.name;
-
-          return (
-            <TabButton
-              key={route.key}
-              route={route}
-              isFocused={isFocused}
-              label={label}
-              tab={tab}
-              onPress={() => {
-                if (!isFocused) navigation.navigate(route.name);
-              }}
-              colors={colors}
-            />
-          );
-        })}
-      </View>
+            return (
+              <TabButton
+                key={route.key}
+                route={route}
+                isFocused={isFocused}
+                label={label}
+                tab={tab}
+                onPress={() => navigation.navigate(route.name)}
+                colors={colors}
+              />
+            );
+          })}
+        </View>
+      </BlurView>
     </View>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   STYLES
-   Premium glass morphism and animations
-═══════════════════════════════════════════════════════════════ */
 const styles = StyleSheet.create({
   wrapper: {
     position: "absolute",
@@ -234,69 +171,37 @@ const styles = StyleSheet.create({
     zIndex: 100,
     pointerEvents: "box-none",
   },
-
-  bar: {
-    flexDirection: "row",
-    borderRadius: 24,
-    borderWidth: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 16,
-    position: "relative",
+  blurWrapper: {
+    borderRadius: 20,
     overflow: "hidden",
   },
-
-  glassOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 24,
-    pointerEvents: "none",
+  bar: {
+    flexDirection: "row",
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
   },
-
   tabButton: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 8,
-    position: "relative",
+    paddingVertical: 6,
+    paddingHorizontal: 4,
   },
-
-  activeIndicator: {
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    width: 44,
-    height: 44,
-    marginTop: -22,
-    marginLeft: -22,
-    borderRadius: 14,
-    zIndex: -1,
-  },
-
   iconContainer: {
-    position: "relative",
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 2,
+    marginBottom: 4,
   },
-
-  activeDot: {
-    position: "absolute",
-    bottom: -4,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-  },
-
   label: {
-    fontSize: 10,
-    letterSpacing: 0.3,
+    fontSize: 11,
+    letterSpacing: 0.2,
   },
 });

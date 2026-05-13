@@ -440,26 +440,35 @@ export function VitalsScreen(): React.JSX.Element {
   }, [session?.user.id, liveReading, isSimulated, load, isRTL]);
 
   // ═══════════════════════════════════════════════════════════════
-  // PERIOD FILTERING LOGIC
+  // ═══════════════════════════════════════════════════════════════
+  // PERIOD FILTERING LOGIC - TIMEZONE SAFE
   // Filter records based on selected period (Day/Week/Month)
+  // Uses UTC timestamps for consistent filtering across timezones
   // ═══════════════════════════════════════════════════════════════
   const filteredRecords = useMemo(() => {
-    const now = new Date();
-    const periodStart = new Date();
+    const nowUTC = Date.now();
 
+    // Calculate period start in UTC milliseconds
+    let periodStartMs: number;
     switch (period) {
-      case 'day':
-        periodStart.setHours(now.getHours() - 24);
+      case "day":
+        periodStartMs = nowUTC - 24 * 60 * 60 * 1000;
         break;
-      case 'week':
-        periodStart.setDate(now.getDate() - 7);
+      case "week":
+        periodStartMs = nowUTC - 7 * 24 * 60 * 60 * 1000;
         break;
-      case 'month':
-        periodStart.setMonth(now.getMonth() - 1);
+      case "month":
+        periodStartMs = nowUTC - 30 * 24 * 60 * 60 * 1000;
         break;
+      default:
+        periodStartMs = nowUTC - 7 * 24 * 60 * 60 * 1000;
     }
 
-    return records.filter(r => new Date(r.recorded_at) >= periodStart);
+    // Filter using UTC timestamps for timezone safety
+    return records.filter((r) => {
+      const recordTime = new Date(r.recorded_at).getTime();
+      return recordTime >= periodStartMs && !isNaN(recordTime);
+    });
   }, [records, period]);
 
   // Chart data - now uses filtered records
