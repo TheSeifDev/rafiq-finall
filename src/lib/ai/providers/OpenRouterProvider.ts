@@ -5,6 +5,7 @@
 
 import { AIProvider, AIMessage, HealthContext, StreamingCallback, AIProviderError } from "./types";
 import { StreamProcessor, fetchWithRetry, type StreamConfig } from "../streaming";
+import { env } from "../../../config/env";
 
 const DEFAULT_MODEL = "openai/gpt-oss-120b:free";
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -42,15 +43,19 @@ class OpenRouterProvider implements AIProvider {
     lastError: null,
     consecutiveFailures: 0,
   };
+  private apiKeyValidated = false;
 
   constructor(apiKey?: string, model: string = DEFAULT_MODEL) {
-    // Get and validate API key
-    const rawKey = apiKey || process.env.OPENROUTER_API_KEY || "";
-    this.apiKey = rawKey.trim().replace(/^["']|["']$/g, "");
+    // Get API key from env helper or parameter
+    const rawKey = apiKey || env.openRouterApiKey || "";
+    this.apiKey = rawKey;
 
     // Validate key format
-    if (this.apiKey && !this.apiKey.startsWith("sk-or-v1-")) {
-      console.warn("[OpenRouter] API key may be invalid (should start with sk-or-v1-)");
+    if (this.apiKey) {
+      console.log("[OpenRouter] API key loaded:", this.apiKey.startsWith("sk-or-v1-") ? "valid format" : "invalid format");
+      this.apiKeyValidated = this.apiKey.startsWith("sk-or-v1-");
+    } else {
+      console.warn("[OpenRouter] No API key found in environment");
     }
 
     this.model = model;
@@ -61,8 +66,15 @@ class OpenRouterProvider implements AIProvider {
    * Check provider availability
    */
   async isAvailable(): Promise<boolean> {
-    if (!this.apiKey) return false;
-    if (!this.apiKey.startsWith("sk-or-v1-")) return false;
+    if (!this.apiKey || !this.apiKeyValidated) {
+      // Auto-reset health if we get a valid key (e.g., after app restart)
+      if (env.openRouterApiKey && env.openRouterApiKey.startsWith("sk-or-v1-")) {
+        this.resetHealth();
+        this.apiKey = env.openRouterApiKey;
+        this.apiKeyValidated = true;
+      }
+      return false;
+    }
     return this.health.isHealthy;
   }
 

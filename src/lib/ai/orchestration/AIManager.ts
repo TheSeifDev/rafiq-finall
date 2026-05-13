@@ -5,6 +5,7 @@
 
 import { providerManager } from '../providers/manager';
 import { AIProvider } from '../providers/types';
+import { env } from '../../../config/env';
 import {
   createReasoningState,
   addUserMessage,
@@ -411,12 +412,8 @@ class AIManager {
    * Get API key
    */
   private getApiKey(modelId: string): string {
-    // Check environment variables
-    if (modelId.includes('openrouter') || modelId.includes('gpt-oss')) {
-      return process.env.EXPO_PUBLIC_OPENROUTER_KEY || '';
-    }
-
-    return process.env.EXPO_PUBLIC_OPENROUTER_KEY || '';
+    // Use env helper
+    return env.openRouterApiKey || '';
   }
 }
 
