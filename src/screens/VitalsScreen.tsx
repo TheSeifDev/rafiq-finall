@@ -439,27 +439,77 @@ export function VitalsScreen(): React.JSX.Element {
     }
   }, [session?.user.id, liveReading, isSimulated, load, isRTL]);
 
-  // Chart data
+  // ═══════════════════════════════════════════════════════════════
+  // PERIOD FILTERING LOGIC
+  // Filter records based on selected period (Day/Week/Month)
+  // ═══════════════════════════════════════════════════════════════
+  const filteredRecords = useMemo(() => {
+    const now = new Date();
+    const periodStart = new Date();
+
+    switch (period) {
+      case 'day':
+        periodStart.setHours(now.getHours() - 24);
+        break;
+      case 'week':
+        periodStart.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        periodStart.setMonth(now.getMonth() - 1);
+        break;
+    }
+
+    return records.filter(r => new Date(r.recorded_at) >= periodStart);
+  }, [records, period]);
+
+  // Chart data - now uses filtered records
   const chartData = useMemo(() => {
-    const recent = records.slice(0, 7).reverse();
-    if (recent.length < 2) {
+    const sorted = [...filteredRecords].sort(
+      (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime()
+    );
+
+    if (sorted.length < 2) {
+      // Generate placeholder data based on period
+      const placeholderCount = period === 'day' ? 6 : period === 'week' ? 7 : 10;
       return {
-        labels: ['--', '--', '--', '--', '--', '--', '--'],
-        datasets: [{ data: [0, 0, 0, 0, 0, 0, 0] }],
+        labels: Array(placeholderCount).fill('--'),
+        datasets: [{ data: Array(placeholderCount).fill(0), color: () => colors.danger, strokeWidth: 2 }],
       };
     }
-    return {
-      labels: recent.map(r => new Date(r.recorded_at).toLocaleDateString(isRTL ? 'ar-EG' : 'en-US', { weekday: 'short' })),
-      datasets: [{ data: recent.map(r => r.heart_rate ?? 72), color: () => colors.danger, strokeWidth: 2 }],
-    };
-  }, [records, isRTL, colors]);
 
-  const { hrAvg, hrMin, hrMax } = useMemo(() => {
-    const hrs = records.map(r => r.heart_rate).filter((v): v is number => v != null);
-    if (hrs.length === 0) return { hrAvg: '--', hrMin: '--', hrMax: '--' };
+    // Format labels based on period
+    const formatDate = (date: string) => {
+      const d = new Date(date);
+      if (period === 'day') {
+        return d.toLocaleTimeString(isRTL ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+      } else if (period === 'week') {
+        return d.toLocaleDateString(isRTL ? 'ar-EG' : 'en-US', { weekday: 'short' });
+      } else {
+        return d.toLocaleDateString(isRTL ? 'ar-EG' : 'en-US', { month: 'short', day: 'numeric' });
+      }
+    };
+
+    return {
+      labels: sorted.map(r => formatDate(r.recorded_at)),
+      datasets: [{
+        data: sorted.map(r => r.heart_rate ?? 72),
+        color: () => colors.danger,
+        strokeWidth: 2
+      }],
+    };
+  }, [filteredRecords, period, isRTL, colors]);
+
+  // Calculate stats from filtered records
+  const stats = useMemo(() => {
+    const hrs = filteredRecords.map(r => r.heart_rate).filter((v): v is number => v != null);
+    if (hrs.length === 0) return { avg: '--', min: '--', max: '--' };
     const avg = Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length);
-    return { hrAvg: String(avg), hrMin: String(Math.min(...hrs)), hrMax: String(Math.max(...hrs)) };
-  }, [records]);
+    return {
+      avg: String(avg),
+      min: String(Math.min(...hrs)),
+      max: String(Math.max(...hrs))
+    };
+  }, [filteredRecords]);
 
   const periodLabel = isRTL
     ? { day: 'يوم', week: 'أسبوع', month: 'شهر' }
@@ -587,20 +637,30 @@ export function VitalsScreen(): React.JSX.Element {
           </>
         )}
 
-        {/* ── Period Filter ── */}
+        {/* ═══ Period Filter ═══ */}
         <View style={s.periodRow}>
           {(['day', 'week', 'month'] as const).map((p) => (
             <TouchableOpacity
               key={p}
               activeOpacity={0.7}
               onPress={() => setPeriod(p)}
-              style={[s.periodChip, {
-                backgroundColor: period === p ? colors.primary : colors.surfaceVariant,
-                borderColor: period === p ? colors.primary : colors.border,
-              }]}>
-              <AppText style={[s.periodChipText, {
-                color: period === p ? '#FFFFFF' : colors.textSecondary,
-              }]}>
+              style={[
+                s.periodChip,
+                {
+                  backgroundColor: period === p ? colors.primary : colors.surfaceVariant,
+                  borderColor: period === p ? colors.primary : colors.border,
+                },
+                period === p && s.periodChipActive,
+              ]}>
+              {/* Active indicator dot */}
+              {period === p && <View style={s.periodChipDot} />}
+
+              <AppText style={[
+                s.periodChipText,
+                {
+                  color: period === p ? '#FFFFFF' : colors.textSecondary,
+                },
+              ]}>
                 {periodLabel[p]}
               </AppText>
             </TouchableOpacity>
@@ -620,7 +680,7 @@ export function VitalsScreen(): React.JSX.Element {
 
           {loading ? (
             <View style={s.chartLoading}><ActivityIndicator color={colors.primary} /></View>
-          ) : records.length >= 2 ? (
+          ) : filteredRecords.length >= 2 ? (
             <View style={{ marginHorizontal: -8 }}>
               <LineChart
                 data={chartData}
@@ -656,21 +716,21 @@ export function VitalsScreen(): React.JSX.Element {
         </View>
 
         {/* ── Stats Summary ── */}
-        {records.length >= 2 && (
+        {filteredRecords.length >= 2 && (
           <VitalsSummary
             label={isRTL ? 'إحصائيات النبض' : 'Heart Rate Stats'}
-            avg={hrAvg} min={hrMin} max={hrMax}
+            avg={stats.avg} min={stats.min} max={stats.max}
             unit=" bpm" color={colors.danger}
           />
         )}
 
         {/* ── Recent Readings ── */}
-        {records.length > 0 && (
+        {filteredRecords.length > 0 && (
           <View style={s.recentSection}>
             <AppText style={[s.sectionTitle, { color: colors.textPrimary }]}>
               {isRTL ? 'القراءات الأخيرة' : 'Recent Readings'}
             </AppText>
-            {records.slice(0, 5).map((r, i) => (
+            {filteredRecords.slice(0, 5).map((r, i) => (
               <RecentReading key={r.id ?? i} reading={r} isAr={isRTL} />
             ))}
           </View>
@@ -888,6 +948,22 @@ const s = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  periodChipActive: {
+    shadowColor: '#00C2FF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  periodChipDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#FFFFFF',
   },
   periodChipText: { fontSize: 13, fontWeight: '700' },
   card: {
