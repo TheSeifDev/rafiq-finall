@@ -34,6 +34,7 @@ import { useAppStore } from '../store/app.store';
 
 export type BootstrapPhase =
   | 'init'
+  | 'sqlite'
   | 'storage'
   | 'permissions'
   | 'queue'
@@ -88,6 +89,11 @@ async function phaseStorage(): Promise<void> {
   await useAppStore.getState().hydrate(language);
 }
 
+async function phaseSQLite(): Promise<void> {
+  const { getLocalDb } = await import('../local/db');
+  await getLocalDb();
+}
+
 async function phasePermissions(): Promise<{ notifications: boolean; location: boolean }> {
   const results = { notifications: false, location: false };
   try {
@@ -105,6 +111,8 @@ async function phasePermissions(): Promise<{ notifications: boolean; location: b
 
 async function phaseQueue(): Promise<{ replayed: number }> {
   try {
+    const { localSyncEngine } = await import('../local/syncEngine');
+    await localSyncEngine.push().catch(() => ({ pushed: 0, failed: 0, remaining: 0 }));
     const { processQueue } = await import('../lib/notifications/notificationPipeline');
     await processQueue();
     return { replayed: 0 };
@@ -151,9 +159,10 @@ async function phaseMonitoring(): Promise<void> {
 }
 
 const PHASE_DEFINITIONS: BootstrapPhaseDefinition[] = [
-  { key: 'storage',       label: 'Storage Hydration',  timeoutMs: 8_000,  dependsOn: [],                        fn: phaseStorage,        critical: false },
-  { key: 'permissions',  label: 'Permissions',        timeoutMs: 5_000,  dependsOn: ['storage'],               fn: phasePermissions,   critical: false },
-  { key: 'queue',        label: 'Queue Restore',      timeoutMs: 10_000, dependsOn: ['storage'],               fn: phaseQueue,          critical: false },
+  { key: 'sqlite',       label: 'SQLite Runtime',     timeoutMs: 8_000,  dependsOn: [],                        fn: phaseSQLite,         critical: true },
+  { key: 'storage',      label: 'Storage Hydration',  timeoutMs: 8_000,  dependsOn: ['sqlite'],                fn: phaseStorage,        critical: false },
+  { key: 'permissions',  label: 'Permissions',        timeoutMs: 5_000,  dependsOn: ['storage'],               fn: phasePermissions,    critical: false },
+  { key: 'queue',        label: 'Queue Restore',      timeoutMs: 10_000, dependsOn: ['storage', 'sqlite'],     fn: phaseQueue,          critical: false },
   { key: 'realtime',    label: 'Supabase Realtime',   timeoutMs: 15_000, dependsOn: ['permissions'],           fn: phaseRealtime,       critical: false },
   { key: 'wearable',   label: 'Wearable',           timeoutMs: 10_000, dependsOn: ['permissions', 'queue'],     fn: phaseWearable,      critical: false },
   { key: 'navigation', label: 'Navigation',          timeoutMs: 5_000,  dependsOn: ['permissions'],           fn: phaseNavigation,    critical: false },
@@ -357,6 +366,7 @@ export async function bootstrapApp(fallbackLanguage: AppLanguage = 'ar'): Promis
 
   const phases: Record<BootstrapPhase, PhaseResult> = {
     init:           { status: 'done', durationMs: 0 },
+    sqlite:         { status: 'pending', durationMs: 0 },
     storage:        { status: 'pending', durationMs: 0 },
     permissions:    { status: 'pending', durationMs: 0 },
     queue:          { status: 'pending', durationMs: 0 },

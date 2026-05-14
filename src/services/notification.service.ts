@@ -5,6 +5,8 @@
 
 import { supabase } from '../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { deleteLocal, listWhere, updateLocal, upsertLocal } from '../local/repository';
+import { localSyncEngine } from '../local/syncEngine';
 import {
   NotificationCategory,
   enqueueNotification,
@@ -46,6 +48,14 @@ export interface AppNotification {
 export const notificationService = {
   // ── Fetch notifications with full schema
   async getNotifications(userId: string): Promise<AppNotification[]> {
+    const local = await listWhere<Record<string, unknown>>(
+      'notifications',
+      'user_id = ?',
+      [userId],
+      'created_at DESC LIMIT 500',
+    );
+    if (local.length > 0) return local as unknown as AppNotification[];
+
     const { data, error } = await supabase
       .from('notifications')
       .select('*')
@@ -54,6 +64,9 @@ export const notificationService = {
       .limit(500);
 
     if (error) throw new Error(error.message);
+    for (const notification of data ?? []) {
+      await upsertLocal('notifications', notification as Record<string, unknown>, { enqueue: false, userId });
+    }
     return (data ?? []) as AppNotification[];
   },
 
@@ -124,53 +137,30 @@ export const notificationService = {
 
   // ── Mark as read
   async markAsRead(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('id', id);
-
-    if (error) throw new Error(error.message);
+    await updateLocal('notifications', id, { is_read: true, read_at: new Date().toISOString() }, { priority: 'normal' });
   },
 
   // ── Mark all as read
   async markAllRead(userId: string): Promise<void> {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', userId)
-      .eq('is_read', false);
-
-    if (error) throw new Error(error.message);
+    const rows = await listWhere<Record<string, unknown>>('notifications', 'user_id = ? AND is_read = 0', [userId]);
+    for (const row of rows) {
+      await updateLocal('notifications', String(row.id), { is_read: true, read_at: new Date().toISOString() }, { userId });
+    }
   },
 
   // ── Pin notification (emergency)
   async pinNotification(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ is_pinned: true })
-      .eq('id', id);
-
-    if (error) throw new Error(error.message);
+    await updateLocal('notifications', id, { is_pinned: true }, { priority: 'high' });
   },
 
   // ── Delete notification
   async deleteNotification(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('notifications')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw new Error(error.message);
+    await deleteLocal('notifications', id, { hard: true, priority: 'normal' });
   },
 
   // ── Delete multiple
   async deleteNotifications(ids: string[]): Promise<void> {
-    const { error } = await supabase
-      .from('notifications')
-      .delete()
-      .in('id', ids);
-
-    if (error) throw new Error(error.message);
+    for (const id of ids) await this.deleteNotification(id);
   },
 
   // ── Search notifications
@@ -189,7 +179,17 @@ export const notificationService = {
 
   // ── Subscribe to realtime (returns cleanup function)
   subscribe(userId: string, onInsert: (notification: AppNotification) => void): () => void {
-    return subscribeToNotifications(userId, onInsert);
+    return subscribeToNotifications(userId, async (notification) => {
+      await upsertLocal('notifications', notification as Record<string, unknown>, { enqueue: false, userId });
+      await localSyncEngine.recordRealtimeEvent({
+        userId,
+        tableName: 'notifications',
+        recordId: notification.id,
+        eventType: 'INSERT',
+        payload: notification as unknown as Record<string, unknown>,
+      });
+      onInsert(notification);
+    });
   },
 
   // ── Backward-compatible aliases

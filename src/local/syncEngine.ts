@@ -1,0 +1,246 @@
+import { supabase } from '../lib/supabase';
+import { all, createUuid, jsonString, parseJson, run } from './db';
+import { allowedTables, logSync, normalizeForSqlite } from './repository';
+
+type PendingSyncRow = {
+  id: string;
+  user_id: string | null;
+  device_id: string | null;
+  table_name: string;
+  record_id: string;
+  operation: 'insert' | 'update' | 'delete' | 'upsert';
+  payload: string;
+  attempts: number;
+  max_attempts: number;
+};
+
+type PullOptions = {
+  userId: string;
+  since?: string | null;
+  tables?: string[];
+};
+
+const PUSHABLE_TABLES = new Set(allowedTables().filter((table) => ![
+  'profiles',
+].includes(table)));
+
+const PULL_TABLES = [
+  'patients',
+  'patient_conditions',
+  'emergency_contacts',
+  'devices',
+  'esp32_devices',
+  'wearables',
+  'vitals_readings',
+  'medications',
+  'medication_logs',
+  'reminders',
+  'notifications',
+  'notification_receipts',
+  'alerts',
+  'emergency_events',
+  'fall_detection_events',
+  'gas_alerts',
+  'oxygen_alerts',
+  'heart_rate_alerts',
+  'respiratory_alerts',
+  'mqtt_events',
+  'sensor_readings',
+  'smart_home_devices',
+  'smart_home_commands',
+  'automation_logs',
+  'relay_logs',
+  'radar_presence_logs',
+  'ai_conversations',
+  'ai_messages',
+  'ai_memory',
+  'ai_context',
+  'ai_personality',
+  'ai_voice_sessions',
+  'ai_emotion_logs',
+  'ai_reminders',
+];
+
+const UPDATED_AT_TABLES = new Set([
+  'patients',
+  'patient_conditions',
+  'emergency_contacts',
+  'devices',
+  'esp32_devices',
+  'wearables',
+  'medications',
+  'reminders',
+  'notifications',
+  'notification_receipts',
+  'alerts',
+  'emergency_events',
+  'smart_home_devices',
+  'ai_conversations',
+  'ai_memory',
+  'ai_context',
+  'ai_personality',
+]);
+
+function nextRetryIso(attempts: number): string {
+  const seconds = Math.min(300, Math.pow(2, attempts) * 5);
+  return new Date(Date.now() + seconds * 1000).toISOString();
+}
+
+async function markFailed(item: PendingSyncRow, error: unknown): Promise<void> {
+  const attempts = item.attempts + 1;
+  const message = error instanceof Error ? error.message : String(error);
+  if (attempts >= item.max_attempts) {
+    await run(
+      `INSERT INTO failed_sync
+        (id, pending_sync_id, user_id, device_id, table_name, record_id, operation, payload, error_message, attempts, failed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        createUuid(),
+        item.id,
+        item.user_id,
+        item.device_id,
+        item.table_name,
+        item.record_id,
+        item.operation,
+        item.payload,
+        message,
+        attempts,
+        new Date().toISOString(),
+      ],
+    );
+    await run('DELETE FROM pending_sync WHERE id = ?', [item.id]);
+  } else {
+    await run(
+      `UPDATE pending_sync
+       SET attempts = ?, last_error = ?, next_attempt_at = ?, status = 'pending', updated_at = ?
+       WHERE id = ?`,
+      [attempts, message, nextRetryIso(attempts), new Date().toISOString(), item.id],
+    );
+  }
+}
+
+async function pushOne(item: PendingSyncRow): Promise<void> {
+  if (!PUSHABLE_TABLES.has(item.table_name)) {
+    await run('DELETE FROM pending_sync WHERE id = ?', [item.id]);
+    return;
+  }
+
+  const payload = parseJson<Record<string, unknown>>(item.payload, {});
+
+  if (item.operation === 'delete') {
+    const { error } = await supabase.from(item.table_name).delete().eq('id', item.record_id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabase.from(item.table_name).upsert(payload, { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+  }
+
+  await run('DELETE FROM pending_sync WHERE id = ?', [item.id]);
+}
+
+export const localSyncEngine = {
+  async push(limit = 50): Promise<{ pushed: number; failed: number; remaining: number }> {
+    const items = await all<PendingSyncRow>(
+      `SELECT * FROM pending_sync
+       WHERE status = 'pending' AND datetime(next_attempt_at) <= datetime('now')
+       ORDER BY
+        CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
+        created_at ASC
+       LIMIT ?`,
+      [limit],
+    );
+
+    let pushed = 0;
+    let failed = 0;
+    await logSync({ direction: 'push', status: 'started', details: { count: items.length } });
+
+    for (const item of items) {
+      await run('UPDATE pending_sync SET status = ?, updated_at = ? WHERE id = ?', [
+        'processing',
+        new Date().toISOString(),
+        item.id,
+      ]);
+      try {
+        await pushOne(item);
+        pushed++;
+      } catch (err) {
+        failed++;
+        await markFailed(item, err);
+      }
+    }
+
+    const remainingRows = await all<{ c: number }>('SELECT COUNT(*) as c FROM pending_sync WHERE status = ?', ['pending']);
+    const remaining = remainingRows[0]?.c ?? 0;
+    await logSync({ direction: 'push', status: failed ? 'partial' : 'success', pushed, failed, details: { remaining } });
+    return { pushed, failed, remaining };
+  },
+
+  async pull(options: PullOptions): Promise<{ pulled: number; failed: number }> {
+    const tables = options.tables ?? PULL_TABLES;
+    let pulled = 0;
+    let failed = 0;
+    await logSync({ userId: options.userId, direction: 'pull', status: 'started', details: { tables } });
+
+    for (const table of tables) {
+      try {
+        let query = supabase.from(table).select('*').limit(1000);
+        if (options.since && UPDATED_AT_TABLES.has(table)) query = query.gte('updated_at', options.since);
+        const { data, error } = await query;
+        if (error) throw new Error(error.message);
+
+        for (const row of data ?? []) {
+          const normalized = normalizeForSqlite(table, row as Record<string, unknown>);
+          const keys = Object.keys(normalized);
+          if (!keys.length) continue;
+          const update = keys.filter((key) => key !== 'id').map((key) => `${key} = excluded.${key}`).join(', ');
+          await run(
+            `INSERT INTO ${table} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})
+             ON CONFLICT(id) DO UPDATE SET ${update}`,
+            keys.map((key) => normalized[key] as string | number | boolean | null),
+          );
+          pulled++;
+        }
+      } catch (err) {
+        failed++;
+        await logSync({
+          userId: options.userId,
+          direction: 'pull',
+          tableName: table,
+          status: 'failed',
+          failed: 1,
+          details: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+    }
+
+    await logSync({ userId: options.userId, direction: 'pull', status: failed ? 'partial' : 'success', pulled, failed });
+    return { pulled, failed };
+  },
+
+  async recordRealtimeEvent(params: {
+    userId?: string;
+    patientId?: string;
+    tableName: string;
+    recordId?: string;
+    eventType: 'INSERT' | 'UPDATE' | 'DELETE' | 'BROADCAST';
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    await run(
+      `INSERT INTO realtime_events
+        (id, user_id, patient_id, table_name, record_id, event_type, payload, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        createUuid(),
+        params.userId ?? null,
+        params.patientId ?? null,
+        params.tableName,
+        params.recordId ?? null,
+        params.eventType,
+        jsonString(params.payload),
+        new Date().toISOString(),
+      ],
+    );
+  },
+};
+
+export default localSyncEngine;

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Session } from '@supabase/supabase-js';
 import { authService } from '../services/auth.service';
-import { supabase } from '../lib/supabase';
+import { patientService } from '../services/patient.service';
 
 export type AuthState = {
   session: Session | null;
@@ -22,14 +22,7 @@ async function ensurePatientRow(session: Session): Promise<void> {
   if (!user) return;
 
   try {
-    // Check if patient row already exists
-    const { data: existing } = await supabase
-      .from('patients')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (existing) return; // Already exists, nothing to do
+    if (await patientService.hasPatient(user.id)) return;
 
     // Extract metadata stored during signup
     const meta = user.user_metadata ?? {};
@@ -38,7 +31,7 @@ async function ensurePatientRow(session: Session): Promise<void> {
     // Only create if we have a name (indicates this user went through our signup flow)
     if (!fullName) return;
 
-    await supabase.from('patients').insert({
+    await patientService.createPatient({
       user_id: user.id,
       full_name: fullName,
       phone: meta.phone ?? null,

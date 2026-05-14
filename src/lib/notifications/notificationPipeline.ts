@@ -15,6 +15,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { supabase } from '../supabase'
 import type { NotificationPrefs } from '../../store/app.store';
+import { createUuid } from '../../local/db';
+import { upsertLocal } from '../../local/repository';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -321,28 +323,25 @@ async function saveDeadLetter(items: QueuedNotification[]): Promise<void> {
 export async function deliverNotification(payload: NotificationPayload): Promise<string> {
   const { user_id, title, body, type, category, severity, data, screen, source } = payload;
 
-  // 1. Insert into Supabase (for persistence and cross-device sync)
-  const { data: inserted, error } = await supabase
-    .from('notifications')
-    .insert({
-      user_id,
-      title,
-      body,
-      type,
-      category,
-      severity: severity ?? 'medium',
-      data: data ?? null,
-      screen: screen ?? 'NotificationCenter',
-      source: source ?? 'local',
-      is_read: false,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('[NotificationDelivery] Supabase insert failed:', error);
-    throw error;
-  }
+  // 1. Persist locally first. Background sync will push to Supabase.
+  const inserted = await upsertLocal('notifications', {
+    id: payload.id ?? createUuid(),
+    user_id,
+    title,
+    body,
+    type,
+    category,
+    severity: severity ?? 'medium',
+    data: data ?? {},
+    screen: screen ?? 'NotificationCenter',
+    source: source ?? 'local',
+    is_read: false,
+    is_pinned: severity === 'critical',
+    idempotency_key: `${type}:${category}:${user_id}:${JSON.stringify(data ?? {})}:${title}`,
+  }, {
+    userId: user_id,
+    priority: severity === 'critical' || category === 'emergency' ? 'critical' : 'normal',
+  });
 
   // 2. Fire local push notification immediately
   await fireLocalNotification({
