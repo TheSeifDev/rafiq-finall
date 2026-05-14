@@ -1,6 +1,9 @@
 import { supabase } from '../lib/supabase';
 import type { VitalsReading, VitalsReadingInsert } from '../types/database';
 import { toFiniteNumberOrNull } from '../utils/number';
+import { createUuid } from '../local/db';
+import { listWhere, upsertLocal } from '../local/repository';
+import { localSyncEngine } from '../local/syncEngine';
 
 function normalizeVitalsReading(reading: unknown): VitalsReading {
   const row = (reading ?? {}) as Partial<VitalsReading> & Record<string, unknown>;
@@ -20,6 +23,14 @@ export const vitalsReadingService = {
    * Fetch the full vitals history for a patient, newest first.
    */
   async getHistory(patientId: string): Promise<VitalsReading[]> {
+    const local = await listWhere<Record<string, unknown>>(
+      'vitals_readings',
+      'patient_id = ?',
+      [patientId],
+      'recorded_at DESC',
+    );
+    if (local.length > 0) return local.map(normalizeVitalsReading);
+
     const { data, error } = await supabase
       .from('vitals_readings')
       .select('*')
@@ -27,6 +38,9 @@ export const vitalsReadingService = {
       .order('recorded_at', { ascending: false });
 
     if (error) throw new Error(error.message);
+    for (const reading of data ?? []) {
+      await upsertLocal('vitals_readings', reading as Record<string, unknown>, { enqueue: false });
+    }
     return (data ?? []).map(normalizeVitalsReading);
   },
 
@@ -34,6 +48,14 @@ export const vitalsReadingService = {
    * Fetch only the most recent reading (used for the Home dashboard card).
    */
   async getLatest(patientId: string): Promise<VitalsReading | null> {
+    const local = await listWhere<Record<string, unknown>>(
+      'vitals_readings',
+      'patient_id = ?',
+      [patientId],
+      'recorded_at DESC LIMIT 1',
+    );
+    if (local[0]) return normalizeVitalsReading(local[0]);
+
     const { data, error } = await supabase
       .from('vitals_readings')
       .select('*')
@@ -52,16 +74,19 @@ export const vitalsReadingService = {
   async addReading(
     reading: VitalsReadingInsert
   ): Promise<{ data: VitalsReading | null; error: string | null }> {
-    const { data, error } = await supabase
-      .from('vitals_readings')
-      .insert([{ ...reading, recorded_at: reading.recorded_at ?? new Date().toISOString() }])
-      .select()
-      .single();
-
-    return {
-      data: error || !data ? null : normalizeVitalsReading(data),
-      error: error?.message ?? null,
-    };
+    try {
+      const data = await upsertLocal('vitals_readings', {
+        id: createUuid(),
+        ...reading,
+        recorded_at: reading.recorded_at ?? new Date().toISOString(),
+      }, { priority: 'high' });
+      return { data: normalizeVitalsReading(data), error: null };
+    } catch (error) {
+      return {
+        data: null,
+        error: error instanceof Error ? error.message : 'Failed to save reading locally',
+      };
+    }
   },
 
   /**
@@ -81,8 +106,17 @@ export const vitalsReadingService = {
           schema: 'public',
           table: 'vitals_readings',
           filter: `patient_id=eq.${patientId}`,
-        },
-        (payload) => callback(normalizeVitalsReading(payload.new))
+      },
+      async (payload) => {
+        await localSyncEngine.recordRealtimeEvent({
+          patientId,
+          tableName: 'vitals_readings',
+          recordId: (payload.new as { id?: string }).id,
+          eventType: 'INSERT',
+          payload: payload.new as Record<string, unknown>,
+        });
+        callback(normalizeVitalsReading(payload.new));
+      }
       )
       .subscribe();
 
