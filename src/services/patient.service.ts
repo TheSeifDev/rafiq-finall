@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { PatientRepository } from '../repositories/PatientRepository';
 import type {
   Patient,
   AddressData,
@@ -9,6 +9,14 @@ import type {
   PatientCondition,
   PatientConditionInsert,
 } from '../types/database';
+import { supabase } from '../lib/supabase';
+
+// Repository instance (lazy)
+let _patientRepo: PatientRepository | null = null;
+function getPatientRepo(): PatientRepository {
+  if (!_patientRepo) _patientRepo = new PatientRepository();
+  return _patientRepo;
+}
 
 // ─── Public re-exports for backward compat ───
 export type PatientProfile = Patient;

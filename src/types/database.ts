@@ -249,8 +249,25 @@ export interface MedicationLogInsert {
 }
 
 // ─────────────────────────────────────────
+// Sync Payload Contract
+// ─────────────────────────────────────────
+
+export interface SyncPayload {
+  id: string;
+  entity: string;
+  operation: 'INSERT' | 'UPDATE' | 'DELETE';
+  payload: Record<string, unknown>;
+  device_id: string;
+  sync_version: number;
+  idempotency_key: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─────────────────────────────────────────
 // Notifications
 // ─────────────────────────────────────────
+
 export type NotificationType = 'critical' | 'reminder' | 'general';
 
 export interface Notification {
