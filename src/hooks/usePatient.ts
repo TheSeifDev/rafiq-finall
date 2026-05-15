@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { patientService } from '../services/patient.service';
 import { useAuthStore } from '../store/auth.store';
-import type { Patient } from '../types/database';
+import type { PatientNormalizedRow } from '../repositories/PatientRepository';
 
 interface UsePatientResult {
-  patient: Patient | null;
+  patient: PatientNormalizedRow | null;
   patientId: string | null;
   loading: boolean;
   error: string | null;
@@ -21,7 +21,7 @@ export function usePatient(): UsePatientResult {
   const session = useAuthStore((s) => s.session);
   const userId = session?.user?.id ?? null;
 
-  const [patient, setPatient] = useState<Patient | null>(null);
+  const [patient, setPatient] = useState<PatientNormalizedRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

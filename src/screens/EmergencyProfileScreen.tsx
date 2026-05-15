@@ -64,14 +64,14 @@ export function EmergencyProfileScreen({ navigation }: Props): React.JSX.Element
     const c = contacts.find((x) => x.id === id);
     if (!c) return;
     setEditingContactId(id);
-    setModalName(c.name); setModalPhone(c.phone); setModalRelation(c.relation); setModalPrimary(c.is_primary);
+    setModalName(c.name); setModalPhone(c.phone); setModalRelation(c.relation); setModalPrimary(Boolean(c.is_primary));
     setContactModal(true);
   }, [contacts]);
 
   const handleSaveContact = useCallback(() => {
     if (!modalName.trim() || !modalPhone.trim()) return;
     if (editingContactId) {
-      updateContact(editingContactId, { name: modalName.trim(), phone: modalPhone.trim(), relation: modalRelation, is_primary: modalPrimary });
+      updateContact(editingContactId, { name: modalName.trim(), phone: modalPhone.trim(), relation: modalRelation, is_primary: modalPrimary ? 1 : 0 });
     } else {
       addContact({ name: modalName.trim(), phone: modalPhone.trim(), relation: modalRelation || t.other, is_primary: modalPrimary });
     }

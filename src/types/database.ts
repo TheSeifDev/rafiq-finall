@@ -40,7 +40,7 @@ export interface Patient {
   user_id: string;
   full_name: string;
   age: number | null;
-  gender: 'male' | 'female' | null;
+  gender: string | null;
   blood_type: string | null;
   phone: string | null;
   birth_date: string | null;
@@ -75,9 +75,15 @@ export interface EmergencyContact {
   relation: string;
   phone: string;
   priority: number;
-  is_primary: boolean;
+  is_primary: number;
+  notes: string | null;
   created_at: string;
   updated_at: string | null;
+  version: number;
+  updated_by_device: string | null;
+  is_deleted: number;
+  deleted_at: string | null;
+  deleted_by: string | null;
 }
 
 export interface EmergencyContactInsert {
@@ -87,6 +93,8 @@ export interface EmergencyContactInsert {
   phone: string;
   priority?: number;
   is_primary?: boolean;
+  notes?: string | null;
+  [key: string]: unknown;
 }
 
 // ─────────────────────────────────────────
@@ -95,15 +103,28 @@ export interface EmergencyContactInsert {
 export interface PatientCondition {
   id: string;
   patient_id: string;
-  condition_key: string;
-  custom_note: string | null;
+  condition_name: string;
+  severity: string | null;
+  diagnosed_date: string | null;
+  notes: string | null;
+  is_active: number;
   created_at: string;
+  updated_at: string | null;
+  version: number;
+  updated_by_device: string | null;
+  is_deleted: number;
+  deleted_at: string | null;
+  deleted_by: string | null;
 }
 
 export interface PatientConditionInsert {
   patient_id: string;
-  condition_key: string;
-  custom_note?: string | null;
+  condition_name: string;
+  severity?: string;
+  diagnosed_date?: string | null;
+  notes?: string | null;
+  is_active?: boolean;
+  [key: string]: unknown;
 }
 
 // ─────────────────────────────────────────

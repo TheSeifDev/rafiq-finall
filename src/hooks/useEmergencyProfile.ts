@@ -78,9 +78,9 @@ export function useEmergencyProfile() {
         setProfileId(profile.id);
         const f = formFromPatient(profile);
         const conds = await patientService.getConditions(profile.id);
-        f.conditions = conds.map((c) => c.condition_key);
-        const otherCond = conds.find((c) => c.condition_key === 'other');
-        f.conditionNotes = otherCond?.custom_note ?? '';
+        f.conditions = conds.map((c) => c.condition_name);
+        const otherCond = conds.find((c) => c.condition_name === 'other');
+        f.conditionNotes = otherCond?.notes ?? '';
         setForm(f);
         initialSnapshot.current = JSON.stringify(f);
 
@@ -119,13 +119,27 @@ export function useEmergencyProfile() {
 
   const addContact = useCallback((c: Omit<EmergencyContactInsert, 'patient_id'>) => {
     if (!profileId) return;
+    const name = typeof c.name === 'string' ? c.name : '';
+    const relation = typeof c.relation === 'string' ? c.relation : '';
+    const phone = typeof c.phone === 'string' ? c.phone : '';
+    const priority = typeof c.priority === 'number' ? c.priority : contacts.length;
+    const isPrimary = typeof c.is_primary === 'boolean' ? c.is_primary : false;
     const temp: EmergencyContact = {
       id: `temp_${Date.now()}`,
       patient_id: profileId,
-      name: c.name, relation: c.relation, phone: c.phone,
-      priority: c.priority ?? contacts.length,
-      is_primary: c.is_primary ?? false,
-      created_at: new Date().toISOString(), updated_at: null,
+      name,
+      relation,
+      phone,
+      priority,
+      is_primary: isPrimary ? 1 : 0,
+      notes: null,
+      created_at: new Date().toISOString(),
+      updated_at: null,
+      version: 1,
+      updated_by_device: null,
+      is_deleted: 0,
+      deleted_at: null,
+      deleted_by: null,
     };
     setContacts((prev) => [...prev, temp]);
   }, [profileId, contacts.length]);
@@ -174,8 +188,8 @@ export function useEmergencyProfile() {
         profileId,
         form.conditions.map((key) => ({
           patient_id: profileId,
-          condition_key: key,
-          custom_note: key === 'other' ? form.conditionNotes : null,
+          condition_name: key,
+          notes: key === 'other' ? form.conditionNotes : null,
         })),
       );
 
@@ -185,13 +199,13 @@ export function useEmergencyProfile() {
         if (c.id.startsWith('temp_')) {
           await patientService.upsertEmergencyContact({
             patient_id: profileId, name: c.name, relation: c.relation,
-            phone: c.phone, priority: c.priority, is_primary: c.is_primary,
+            phone: c.phone, priority: c.priority, is_primary: c.is_primary ? true : false,
           });
         } else {
           existingIds.add(c.id);
           await patientService.upsertEmergencyContact({
             id: c.id, patient_id: profileId, name: c.name, relation: c.relation,
-            phone: c.phone, priority: c.priority, is_primary: c.is_primary,
+            phone: c.phone, priority: c.priority, is_primary: c.is_primary ? true : false,
           });
         }
       }
