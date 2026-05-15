@@ -1,8 +1,11 @@
 import { supabase } from '../lib/supabase';
+import { createUuid } from '../local/db';
+import { deleteLocal, getById, listWhere, upsertLocal, updateLocal } from '../local/repository';
 
 export type Medication = {
   id: string;
   patient_id: string;
+  user_id?: string | null;
   name: string;
   dosage: string;
   frequency: string;
@@ -54,6 +57,14 @@ export type MedicationLogInsert = {
 
 export const medicationService = {
   async getMedications(patientId: string): Promise<Medication[]> {
+    const local = await listWhere<Record<string, unknown>>(
+      'medications',
+      'patient_id = ? AND deleted_at IS NULL',
+      [patientId],
+      'updated_at DESC, created_at DESC',
+    );
+    if (local.length > 0) return local as unknown as Medication[];
+
     const { data, error } = await supabase
       .from('medications')
       .select('*')
@@ -61,59 +72,73 @@ export const medicationService = {
       .order('updated_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
+    for (const med of data ?? []) {
+      await upsertLocal('medications', med as Record<string, unknown>, { enqueue: false });
+    }
     return (data ?? []) as Medication[];
   },
 
   async getMedication(id: string): Promise<Medication | null> {
+    const local = await getById<Record<string, unknown>>('medications', id);
+    if (local && !local.deleted_at) return local as unknown as Medication;
+
     const { data, error } = await supabase.from('medications').select('*').eq('id', id).maybeSingle();
     if (error) throw new Error(error.message);
     return (data ?? null) as Medication | null;
   },
 
   async addMedication(payload: MedicationInsert): Promise<void> {
-    const { error } = await supabase.from('medications').insert(payload);
-    if (error) throw new Error(error.message);
+    await upsertLocal('medications', { id: createUuid(), ...payload }, {
+      userId: payload.user_id ?? undefined,
+      priority: 'normal',
+    });
   },
 
   async createMedication(payload: MedicationInsert): Promise<Medication> {
-    const { data, error } = await supabase.from('medications').insert(payload).select('*').single();
-    if (error) throw new Error(error.message);
-    return data as Medication;
+    return upsertLocal('medications', { id: createUuid(), ...payload }, {
+      userId: payload.user_id ?? undefined,
+      priority: 'normal',
+    }) as Promise<Medication>;
   },
 
   async updateMedication(id: string, payload: Partial<Medication>): Promise<void> {
-    const { error } = await supabase.from('medications').update(payload).eq('id', id);
-    if (error) throw new Error(error.message);
+    await updateLocal('medications', id, payload as Record<string, unknown>, {
+      userId: payload.user_id ?? undefined,
+      priority: 'normal',
+    });
   },
 
   async updateMedicationReturning(id: string, payload: Partial<Medication>): Promise<Medication> {
-    const { data, error } = await supabase.from('medications').update(payload).eq('id', id).select('*').single();
-    if (error) throw new Error(error.message);
-    return data as Medication;
+    await this.updateMedication(id, payload);
+    const updated = await this.getMedication(id);
+    if (!updated) throw new Error('Medication not found after update');
+    return updated;
   },
 
   async deleteMedication(id: string): Promise<void> {
-    const { error } = await supabase.from('medications').delete().eq('id', id);
-    if (error) throw new Error(error.message);
+    await deleteLocal('medications', id, { priority: 'normal' });
   },
 
   async setActive(id: string, active: boolean): Promise<void> {
-    const { error } = await supabase
-      .from('medications')
-      .update({ active, is_active: active })
-      .eq('id', id);
-    if (error) throw new Error(error.message);
+    await updateLocal('medications', id, { active, is_active: active }, { priority: 'normal' });
   },
 
   async refillStock(
     id: string,
     payload: Pick<Medication, 'total_quantity' | 'remaining_quantity' | 'refill_threshold' | 'quantity_type'>,
   ): Promise<void> {
-    const { error } = await supabase.from('medications').update(payload).eq('id', id);
-    if (error) throw new Error(error.message);
+    await updateLocal('medications', id, payload as Record<string, unknown>, { priority: 'normal' });
   },
 
   async listLogs(medicationId: string, limit = 200): Promise<MedicationLog[]> {
+    const local = await listWhere<Record<string, unknown>>(
+      'medication_logs',
+      'medication_id = ?',
+      [medicationId],
+      `taken_at DESC LIMIT ${Math.max(1, Math.min(limit, 500))}`,
+    );
+    if (local.length > 0) return local as unknown as MedicationLog[];
+
     const { data, error } = await supabase
       .from('medication_logs')
       .select('*')
@@ -121,15 +146,25 @@ export const medicationService = {
       .order('taken_at', { ascending: false })
       .limit(limit);
     if (error) throw new Error(error.message);
+    for (const log of data ?? []) {
+      await upsertLocal('medication_logs', log as Record<string, unknown>, { enqueue: false });
+    }
     return (data ?? []) as MedicationLog[];
   },
 
   async addLog(payload: MedicationLogInsert): Promise<void> {
-    const { error } = await supabase.from('medication_logs').insert(payload);
-    if (error) throw new Error(error.message);
+    await upsertLocal('medication_logs', { id: createUuid(), ...payload }, { priority: 'normal' });
   },
 
   async listLogsForPatientRange(patientId: string, startIso: string, endIso: string): Promise<MedicationLog[]> {
+    const local = await listWhere<Record<string, unknown>>(
+      'medication_logs',
+      'patient_id = ? AND taken_at >= ? AND taken_at < ?',
+      [patientId, startIso, endIso],
+      'taken_at DESC',
+    );
+    if (local.length > 0) return local as unknown as MedicationLog[];
+
     const { data, error } = await supabase
       .from('medication_logs')
       .select('*, medications!inner(patient_id)')
