@@ -36,7 +36,6 @@ type Props = ProfileStackScreenProps<"ProfileMain">;
 
 // ── Device helpers (logic untouched) ──
 const DEVICE_ICONS: Record<DeviceType, string> = {
-  watch: "watch-outline",
   gas: "flame-outline",
   motion: "radio-outline",
 };
@@ -44,12 +43,10 @@ const DEVICE_ICONS: Record<DeviceType, string> = {
 // (watch = blue, gas = amber, motion = purple) — not background/surface colors.
 // These intentionally differ from the main theme's primary color.
 const DEVICE_COLORS: Record<DeviceType, string> = {
-  watch: '#00C2FF',
   gas: '#F59E0B',
   motion: '#8B5CF6',
 };
 const TYPE_OPTIONS: { key: DeviceType; labelAr: string; labelEn: string }[] = [
-  { key: "watch", labelAr: "ساعة ذكية", labelEn: "Smart Watch" },
   { key: "gas", labelAr: "حساس غاز", labelEn: "Gas Sensor" },
   { key: "motion", labelAr: "حساس حركة", labelEn: "Motion Sensor" },
 ];
@@ -142,16 +139,16 @@ function DeviceCard({
   device, darkMode, colors, isAr, onRename, onDelete, onToggle,
 }: {
   device: Device; darkMode: boolean; colors: any; isAr: boolean;
-  onRename: () => void; onDelete: () => void; onToggle: () => void;
+  onRename: () => void; onDelete: () => void; onToggle?: () => void;
 }) {
   const accent = DEVICE_COLORS[device.type] ?? colors.primary;
   const statusColor = device.isConnected ? colors.success : colors.textSecondary;
   const statusLabel = device.isConnected ? (isAr ? "متصل" : "Online") : (isAr ? "غير متصل" : "Offline");
   const bg = darkMode ? "rgba(30, 41, 59, 0.60)" : "rgba(248, 250, 252, 0.90)";
-  const hasBattery = device.type === "watch" && typeof device.battery === "number";
-  const bv = hasBattery ? device.battery : null;
-  const batIcon = bv != null ? (bv > 75 ? "battery-full-outline" : bv > 40 ? "battery-half-outline" : "battery-dead-outline") : null;
-  const batColor = bv != null ? (bv > 20 ? colors.success : colors.danger) : null;
+  // Battery display removed - sensors don't have battery status
+  const bv = null;
+  const batIcon = null;
+  const batColor = null;
 
   return (
     <TouchableOpacity activeOpacity={0.7} onLongPress={onRename} style={[st.deviceCard, { backgroundColor: bg }]}>
@@ -166,12 +163,7 @@ function DeviceCard({
           <AppText style={[st.deviceMetaText, { color: colors.textSecondary }]}>· {timeAgo(device.lastSeen, isAr)}</AppText>
         </View>
       </View>
-      {hasBattery && bv != null && batIcon && batColor ? (
-        <View style={st.batteryWrap}>
-          <Ionicons name={batIcon as any} size={16} color={batColor} />
-          <AppText style={[st.batteryText, { color: colors.textSecondary }]}>{bv}%</AppText>
-        </View>
-      ) : null}
+      {/* Battery display removed - no battery for gas/motion sensors */}
       <View style={st.deviceActions}>
         <TouchableOpacity hitSlop={8} onPress={onToggle} style={[st.deviceActBtn, { backgroundColor: (device.isConnected ? colors.success : colors.textSecondary) + "12" }]}>
           <Ionicons name={device.isConnected ? "link" : "unlink"} size={14} color={device.isConnected ? colors.success : colors.textSecondary} />
@@ -194,13 +186,13 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
   const isAr = language === "ar";
 
   // Devices store
-  const { devices, addDevice, removeDevice, renameDevice, toggleConnection, _hydrate } = useDevicesStore();
+  const { devices, addDevice, removeDevice, renameDevice, _hydrate } = useDevicesStore();
   useEffect(() => { _hydrate(); }, []);
 
   // Modal state
   const [showAddModal, setShowAddModal] = useState(false);
   const [addName, setAddName] = useState("");
-  const [addType, setAddType] = useState<DeviceType>("watch");
+  const [addType, setAddType] = useState<DeviceType>("gas");
   const [renameTarget, setRenameTarget] = useState<Device | null>(null);
   const [renameTxt, setRenameTxt] = useState("");
 
@@ -208,7 +200,7 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
     if (!addName.trim()) return;
     addDevice(addName.trim(), addType);
     setAddName("");
-    setAddType("watch");
+    setAddType("gas");
     setShowAddModal(false);
   };
   const handleRenameSubmit = () => {
@@ -322,8 +314,7 @@ export function ProfileScreen({ navigation }: Props): React.JSX.Element {
             {devices.map((device) => (
               <DeviceCard key={device.id} device={device} darkMode={darkMode} colors={colors} isAr={isAr}
                 onRename={() => { setRenameTarget(device); setRenameTxt(device.name); }}
-                onDelete={() => handleDelete(device)}
-                onToggle={() => toggleConnection(device.id)} />
+                onDelete={() => handleDelete(device)} />
             ))}
             {devices.length === 0 && (
               <View style={st.emptyDevices}>

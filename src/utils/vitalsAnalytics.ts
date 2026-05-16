@@ -1,8 +1,9 @@
 /**
- * Vitals Analytics — realistic data generation + stats computation.
+ * Vitals Analytics — real data only.
  *
- * Priority pipeline: real DB records → live BLE reading → persona fallback.
- * All fallback data uses physiologically coherent patterns.
+ * ALL fake / random / seeded data generation has been removed.
+ * generateRealisticWeek() does NOT exist any more.
+ * Charts are driven exclusively by real Health Connect records.
  */
 
 // ─── Types ──────────────────────────────────────────────────
@@ -29,108 +30,24 @@ export interface WeeklyAnalytics {
   spo2: VitalStats;
 }
 
-// ─── Physiological model ────────────────────────────────────
-// A circadian-like pattern: HR rises mid-week (stress/activity)
-// and dips on weekends. BP correlates with HR.
-
-const CIRCADIAN_HR = [0, 1.5, 3.2, 4.0, 2.8, 1.0, -0.5]; // Mon-Sun bias
-
-function clamp(v: number, lo: number, hi: number) {
-  return Math.min(hi, Math.max(lo, v));
-}
-
-function smooth(arr: number[], passes = 1): number[] {
-  let r = [...arr];
-  for (let p = 0; p < passes; p++) {
-    const next = [...r];
-    for (let i = 1; i < r.length - 1; i++) {
-      next[i] = r[i - 1] * 0.25 + r[i] * 0.5 + r[i + 1] * 0.25;
-    }
-    r = next;
-  }
-  return r.map((v) => Math.round(v * 10) / 10);
-}
+// ─── Helpers ─────────────────────────────────────────────────
 
 function stats(arr: number[]): VitalStats {
-  if (!arr.length) return { avg: 0, min: 0, max: 0 };
-  const sum = arr.reduce((a, b) => a + b, 0);
+  const clean = arr.filter((v) => v > 0);
+  if (!clean.length) return { avg: 0, min: 0, max: 0 };
+  const sum = clean.reduce((a, b) => a + b, 0);
   return {
-    avg: Math.round(sum / arr.length),
-    min: Math.min(...arr),
-    max: Math.max(...arr),
+    avg: Math.round(sum / clean.length),
+    min: Math.min(...clean),
+    max: Math.max(...clean),
   };
 }
 
-// ─── Realistic 7-day generator ──────────────────────────────
-
-export function generateRealisticWeek(
-  baseHR = 74,
-  baseSys = 120,
-  baseDia = 78,
-  daysAr?: boolean,
-): DayVitals[] {
-  const labels = daysAr
-    ? ['سبت', 'أحد', 'إثن', 'ثلا', 'أرب', 'خمي', 'جمع']
-    : ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-
-  // Raw values with circadian bias + natural noise
-  const rawHR = labels.map((_, i) => {
-    const bias = CIRCADIAN_HR[i];
-    const noise = (Math.random() - 0.5) * 6; // ±3 bpm
-    return clamp(Math.round(baseHR + bias + noise), 58, 100);
-  });
-
-  // BP correlates with HR
-  const rawSys = rawHR.map((hr) => {
-    const delta = hr - baseHR;
-    const noise = (Math.random() - 0.5) * 6;
-    return clamp(Math.round(baseSys + delta * 0.7 + noise), 100, 145);
-  });
-
-  const rawDia = rawSys.map((sys) =>
-    clamp(Math.round(sys * 0.64 + (Math.random() - 0.5) * 4), 60, 95),
-  );
-
-  // SpO2 is very stable (healthy adult)
-  const rawSpo2 = labels.map(() =>
-    clamp(Math.round(97.5 + (Math.random() - 0.5) * 3), 95, 100),
-  );
-
-  // Temperature small variance
-  const rawTemp = labels.map(() =>
-    parseFloat((36.5 + (Math.random() - 0.5) * 0.8).toFixed(1)),
-  );
-
-  // Smooth HR and BP to avoid unrealistic jumps
-  const hr = smooth(rawHR).map(Math.round);
-  const sys = smooth(rawSys).map(Math.round);
-
-  return labels.map((day, i) => ({
-    day,
-    hr: hr[i],
-    sys: sys[i],
-    dia: rawDia[i],
-    spo2: rawSpo2[i],
-    temp: rawTemp[i],
-  }));
-}
-
-// ─── Build analytics from any source ────────────────────────
-
-export function buildWeeklyAnalytics(
-  days: DayVitals[],
-): WeeklyAnalytics {
-  return {
-    days,
-    hr: stats(days.map((d) => d.hr)),
-    sys: stats(days.map((d) => d.sys)),
-    spo2: stats(days.map((d) => d.spo2)),
-  };
-}
+// ─── Real records → DayVitals ─────────────────────────────────
 
 /**
- * Convert VitalsRecord[] (from DB) into DayVitals[] for the chart.
- * Takes the last 7 records and maps them.
+ * Convert VitalsRecord[] (from SQLite/Health Connect) into DayVitals[]
+ * for chart rendering. Only real records are passed; no fallback data.
  */
 export function recordsToDays(
   records: Array<{
@@ -159,3 +76,22 @@ export function recordsToDays(
     };
   });
 }
+
+// ─── Build analytics from real records ───────────────────────
+
+export function buildWeeklyAnalytics(days: DayVitals[]): WeeklyAnalytics {
+  return {
+    days,
+    hr: stats(days.map((d) => d.hr)),
+    sys: stats(days.map((d) => d.sys)),
+    spo2: stats(days.map((d) => d.spo2)),
+  };
+}
+
+/** Empty analytics object — shown when no records available. */
+export const EMPTY_ANALYTICS: WeeklyAnalytics = {
+  days: [],
+  hr: { avg: 0, min: 0, max: 0 },
+  sys: { avg: 0, min: 0, max: 0 },
+  spo2: { avg: 0, min: 0, max: 0 },
+};

@@ -1,7 +1,9 @@
 /**
- * VitalsScreen — Realistic Wearable Medical Dashboard
- * Premium health monitoring with live vitals, BLE states, heartbeat animation
- * Full RTL Arabic support, emergency thresholds, device management
+ * VitalsScreen — Real Health Connect Dashboard
+ *
+ * FAKE BLE REMOVED. Data source: Android Health Connect only.
+ * Connected state shown ONLY when Health Connect is available
+ * AND real records exist in SQLite.
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
@@ -10,19 +12,17 @@ import {
 } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
 import { Screen } from '../components/ui/Screen';
 import { AppText } from '../components/ui/AppText';
 import { useAuthStore } from '../store/auth.store';
+import { useNavigation } from '@react-navigation/native';
 import { patientService } from '../services/patient.service';
 import { vitalsService, type VitalsRecord } from '../services/vitals.service';
-import * as wearable from '../services/wearable/ble.service';
-import type { VitalsReading } from '../types/wearable';
+import { healthConnectService } from '../services/wearable/HealthConnectService';
 import { useLocale } from '../hooks/useLocale';
 import { useTheme } from '../theme/useTheme';
 import { spacing, radius } from '../theme';
 import { logger } from '../lib/logger';
-import { healthMonitor } from '../lib/healthMonitor';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const CHART_W = SCREEN_W - spacing.lg * 2 - 24;
@@ -320,21 +320,15 @@ export function VitalsScreen(): React.JSX.Element {
   const { t, isRTL } = useLocale();
   const { colors } = useTheme();
   const session = useAuthStore((s) => s.session);
+  const navigation = useNavigation<any>();
 
   const [records, setRecords] = useState<VitalsRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [connecting, setConnecting] = useState(false);
-  const [device, setDevice] = useState<string | null>(null);
-  const [liveReading, setLiveReading] = useState<VitalsReading | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
-
-  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
-  const [signalQuality, setSignalQuality] = useState<string>('good');
-  const [lastSync, setLastSync] = useState<number | null>(null);
-
-  const isSimulated = wearable.isSimulated;
+  const [hcAvailable, setHcAvailable] = useState(false);
 
   const load = useCallback(async () => {
     if (!session?.user.id) return;
@@ -349,111 +343,38 @@ export function VitalsScreen(): React.JSX.Element {
 
   useEffect(() => { load(); }, [load]);
 
-  // Health monitor
+  // Check Health Connect availability
   useEffect(() => {
-    healthMonitor.start();
-    const sub = healthMonitor.subscribe((state) => {
-      if (state.deviceId && state.deviceName) {
-        setDevice(state.deviceName);
-      }
-      if (state.lastSeen) setLastSync(state.lastSeen);
-    });
-    return () => {
-      sub();
-      healthMonitor.stop();
-    };
+    healthConnectService.initialize().then((status) => {
+      setHcAvailable(status === 'available');
+    }).catch(() => setHcAvailable(false));
   }, []);
 
-  // Live vitals polling (new wearable service)
-  useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-
-    const pollVitals = async () => {
-      try {
-        const userId = session?.user?.id;
-        if (!userId) return;
-        const reading = await wearable.readVitals(userId);
-        setLiveReading(reading);
-        setLastSync(Date.now());
-        logger.wearable.reading('heart_rate', reading.heart_rate, 'wearable');
-      } catch {
-        // Ignore errors during polling
-      }
-    };
-
-    // Poll every 10 seconds for new vitals
-    intervalId = setInterval(pollVitals, 10000);
-    pollVitals(); // Initial fetch
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [session?.user?.id]);
-
-  const handleConnect = useCallback(async () => {
-    setConnecting(true);
+  // Sync from Health Connect → SQLite
+  const handleSync = useCallback(async () => {
+    if (!session?.user.id) return;
+    setSyncing(true);
     setError(null);
     try {
-      const devs = await wearable.scan();
-      if (devs.length === 0) {
-        setError(isRTL ? 'لم يتم العثور على أجهزة' : 'No devices found');
+      const profile = await patientService.getProfile(session.user.id);
+      if (!profile) throw new Error('Profile not found');
+      const newRecords = await healthConnectService.readAllVitals(profile.id, 7);
+      if (newRecords.length === 0) {
+        setError(isRTL
+          ? 'لا توجد بيانات صحية حقيقية\nقم بمزامنة Oraimo Health مع Health Connect'
+          : 'No real health data found.\nSync Oraimo Health with Health Connect first.');
         return;
       }
-      await wearable.connect(devs[0].id);
-      setDevice(devs[0].name);
-      healthMonitor.setDevice(devs[0].id, devs[0].name);
-      logger.wearable.connected(devs[0].name, devs[0].id);
-
-      const v = await wearable.readVitals(session?.user?.id || '');
-      setLiveReading(v);
+      for (const r of newRecords) await vitalsService.saveVitals(r);
       setLastSync(Date.now());
-
-      // Read battery if available
-      if (devs[0].batteryLevel) setBatteryLevel(devs[0].batteryLevel);
-      if (devs[0].signalQuality) setSignalQuality(devs[0].signalQuality);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : (isRTL ? 'فشل الاتصال' : 'Connection failed');
-      setError(msg);
-      logger.error('BLE connect failed', { error: msg });
-    } finally {
-      setConnecting(false);
-    }
-  }, [session?.user?.id, isRTL]);
-
-  const handleDisconnect = useCallback(async () => {
-    await wearable.disconnect();
-    setDevice(null);
-    setLiveReading(null);
-    setBatteryLevel(null);
-    setSignalQuality('unknown');
-    setLastSync(null);
-  }, []);
-
-  const handleSave = useCallback(async () => {
-    if (!session?.user.id || !liveReading) return;
-    try {
-      setSaving(true);
-      const profile = await patientService.getProfile(session.user.id);
-      if (!profile) return;
-      await vitalsService.saveVitals({
-        patient_id: profile.id,
-        heart_rate: liveReading.heart_rate,
-        blood_pressure_systolic: liveReading.blood_pressure_systolic,
-        blood_pressure_diastolic: liveReading.blood_pressure_diastolic,
-        oxygen_saturation: liveReading.oxygen_saturation,
-        temperature: liveReading.temperature,
-        steps: liveReading.steps ?? null,
-        source: isSimulated ? 'smartwatch' : 'bluetooth',
-        recorded_at: new Date().toISOString(),
-      });
       await load();
-      Alert.alert('', isRTL ? 'تم حفظ القراءة بنجاح' : 'Reading saved successfully');
-    } catch {
-      Alert.alert('', isRTL ? 'فشل حفظ القراءة' : 'Failed to save reading');
+      logger.info('HealthConnect sync', { count: newRecords.length });
+    } catch (e: unknown) {
+      setError((e as Error).message);
     } finally {
-      setSaving(false);
+      setSyncing(false);
     }
-  }, [session?.user.id, liveReading, isSimulated, load, isRTL]);
+  }, [session?.user.id, isRTL, load]);
 
   // ═══════════════════════════════════════════════════════════════
   // ═══════════════════════════════════════════════════════════════
@@ -517,7 +438,7 @@ export function VitalsScreen(): React.JSX.Element {
     return {
       labels: sorted.map(r => formatDate(r.recorded_at)),
       datasets: [{
-        data: sorted.map(r => r.heart_rate ?? 72),
+        data: sorted.map(r => r.heart_rate ?? 0),
         color: () => colors.danger,
         strokeWidth: 2
       }],
@@ -540,9 +461,9 @@ export function VitalsScreen(): React.JSX.Element {
     ? { day: 'يوم', week: 'أسبوع', month: 'شهر' }
     : { day: 'Day', week: 'Week', month: 'Month' };
 
-  const hrColor = liveReading
-    ? (liveReading.heart_rate > 100 || liveReading.heart_rate < 50 ? colors.danger : colors.success)
-    : colors.danger;
+  // latest real reading from records
+  const latestRecord = records[0] ?? null;
+  const isConnected = hcAvailable && records.length > 0;
 
   return (
     <Screen style={{ backgroundColor: colors.background }}>
@@ -553,7 +474,7 @@ export function VitalsScreen(): React.JSX.Element {
           <View style={{ flex: 1 }}>
             <AppText style={[s.h1, { color: colors.textPrimary }]}>{t('vitalsTitle')}</AppText>
             <AppText style={[s.sub, { color: colors.textSecondary }]}>
-              {isRTL ? 'مراقبة صحية شاملة' : 'Comprehensive Health Monitoring'}
+              {isRTL ? 'مراقبة صحية حقيقية عبر Health Connect' : 'Real vitals via Health Connect'}
             </AppText>
           </View>
           <View style={[s.headerBadge, { backgroundColor: colors.danger + '14' }]}>
@@ -561,105 +482,111 @@ export function VitalsScreen(): React.JSX.Element {
           </View>
         </View>
 
-        {/* ── Device Card ── */}
-        <DeviceCard
-          name={device}
-          connected={!!device}
-          isSimulated={isSimulated}
-          battery={batteryLevel}
-          signal={signalQuality}
-          onConnect={handleConnect}
-          onDisconnect={handleDisconnect}
-          connecting={connecting}
-          error={error}
-          isAr={isRTL}
-        />
-
-        {/* ── Live Vitals (when connected) ── */}
-        {device && liveReading && (
-          <>
-            <View style={s.liveSection}>
-              <View style={s.liveSectionHeader}>
-                <View style={s.liveSectionDot} />
-                <AppText style={[s.liveSectionTitle, { color: colors.textPrimary }]}>
-                  {isRTL ? 'القراءات الحية' : 'Live Readings'}
-                </AppText>
-                <AppText style={s.liveSectionTime}>
-                  {lastSync ? `${Math.round((Date.now() - lastSync) / 1000)}s ago` : ''}
-                </AppText>
-              </View>
-
-              {/* Heartbeat pulse + HR */}
-              <View style={s.heartbeatRow}>
-                <HeartbeatPulse bpm={liveReading.heart_rate} color={hrColor} />
-                <View style={s.hrDisplay}>
-                  <AppText style={[s.hrValue, { color: hrColor }]}>{liveReading.heart_rate}</AppText>
-                  <AppText style={[s.hrUnit, { color: colors.textSecondary }]}>bpm</AppText>
-                </View>
-                <View style={s.hrLabel}>
-                  <AppText style={[s.hrLabelText, { color: colors.textSecondary }]}>
-                    {isRTL ? 'نبض القلب' : 'Heart Rate'}
-                  </AppText>
-                  {liveReading.heart_rate > 100 && (
-                    <AppText style={[s.hrAlertText, { color: colors.danger }]}>
-                      {isRTL ? 'مرتفع!' : 'High!'}
-                    </AppText>
-                  )}
-                </View>
-              </View>
-
-              {/* 2x2 grid */}
-              <View style={s.vitalsGrid}>
-                <LiveVitalCard
-                  label={isRTL ? 'ضغط الدم' : 'Blood Pressure'}
-                  value={`${liveReading.blood_pressure_systolic}/${liveReading.blood_pressure_diastolic}`}
-                  unit="mmHg"
-                  icon="fitness"
-                  color={colors.warning}
-                  isAlert={liveReading.blood_pressure_systolic > 140 || liveReading.blood_pressure_systolic < 90}
-                />
-                <LiveVitalCard
-                  label={isRTL ? 'الأكسجين' : 'SpO2'}
-                  value={`${liveReading.oxygen_saturation}`}
-                  unit="%"
-                  icon="water"
-                  color={colors.primary}
-                  isAlert={liveReading.oxygen_saturation < 95}
-                />
-                <LiveVitalCard
-                  label={isRTL ? 'الحرارة' : 'Temperature'}
-                  value={`${liveReading.temperature}`}
-                  unit="°C"
-                  icon="thermometer"
-                  color={colors.success}
-                  isAlert={liveReading.temperature > 37.5 || liveReading.temperature < 35.5}
-                />
-                <LiveVitalCard
-                  label={isRTL ? 'آخر تحديث' : 'Last Update'}
-                  value={lastSync ? new Date(lastSync).toLocaleTimeString(isRTL ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : '--'}
-                  unit=""
-                  icon="time"
-                  color={colors.textSecondary}
-                />
-              </View>
-
-              {/* Save button */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={handleSave}
-                disabled={saving}
-                style={[s.saveBtn, { backgroundColor: colors.success }]}>
-                {saving ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <>
-                    <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
-                    <AppText style={s.saveBtnText}>{isRTL ? 'حفظ القراءة' : 'Save Reading'}</AppText>
-                  </>
-                )}
-              </TouchableOpacity>
+        {/* ── Health Connect Status Card ── */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('WearablePairing')}
+          style={[s.deviceCard, { backgroundColor: colors.surface, borderColor: isConnected ? colors.success + '30' : colors.border }]}
+        >
+          <View style={s.deviceCardTop}>
+            <View style={[s.deviceIconWrap, { backgroundColor: (isConnected ? colors.success : colors.primary) + '14' }]}>
+              <Ionicons name="heart-circle-outline" size={22} color={isConnected ? colors.success : colors.primary} />
             </View>
-          </>
+            <View style={s.deviceInfo}>
+              <AppText style={[s.deviceName, { color: colors.textPrimary }]}>Health Connect</AppText>
+              <View style={s.deviceStatusRow}>
+                <View style={[s.deviceDot, { backgroundColor: isConnected ? colors.success : colors.textSecondary }]} />
+                <AppText style={[s.deviceStatusText, { color: isConnected ? colors.success : colors.textSecondary }]}>
+                  {isConnected
+                    ? (isRTL ? 'متصل · بيانات حقيقية' : 'Connected · Real data')
+                    : (isRTL ? 'اضغط لإعداد Health Connect' : 'Tap to setup Health Connect')}
+                </AppText>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+          </View>
+          {lastSync && (
+            <AppText style={[s.deviceStatusText, { color: colors.textSecondary, marginTop: 4 }]}>
+              {isRTL ? `آخر مزامنة: ${new Date(lastSync).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}` : `Last sync: ${new Date(lastSync).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}
+            </AppText>
+          )}
+        </TouchableOpacity>
+
+        {/* Sync button */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={handleSync}
+          disabled={syncing}
+          style={[s.connectBtn, { backgroundColor: colors.primary }]}
+        >
+          {syncing ? <ActivityIndicator color="#fff" size="small" /> : (
+            <>
+              <Ionicons name="sync-outline" size={16} color="#fff" />
+              <AppText style={s.connectBtnText}>{isRTL ? 'مزامنة Health Connect' : 'Sync from Health Connect'}</AppText>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* Error */}
+        {error && (
+          <View style={[s.errorRow, { backgroundColor: colors.warning + '10' }]}>
+            <Ionicons name="information-circle" size={13} color={colors.warning} />
+            <AppText style={[s.errorText, { color: colors.warning }]}>{error}</AppText>
+          </View>
+        )}
+
+        {/* No data empty state */}
+        {!loading && records.length === 0 && (
+          <View style={[s.emptyChart, { height: 120 }]}>
+            <Ionicons name="heart-dislike-outline" size={32} color={colors.textSecondary} />
+            <AppText style={[s.emptyChartText, { color: colors.textPrimary }]}>
+              {isRTL ? 'لا توجد بيانات صحية حقيقية' : 'No real health data'}
+            </AppText>
+            <AppText style={[s.deviceStatusText, { color: colors.textSecondary, textAlign: 'center' }]}>
+              {isRTL ? 'قم بمزامنة Oraimo Health مع Health Connect' : 'Sync Oraimo Health with Health Connect'}
+            </AppText>
+          </View>
+        )}
+
+        {/* ── Latest Real Reading (from SQLite) ── */}
+        {latestRecord && (
+          <View style={s.liveSection}>
+            <View style={s.liveSectionHeader}>
+              <View style={s.liveSectionDot} />
+              <AppText style={[s.liveSectionTitle, { color: colors.textPrimary }]}>
+                {isRTL ? 'آخر قراءة حقيقية' : 'Latest Real Reading'}
+              </AppText>
+              <AppText style={s.liveSectionTime}>
+                {latestRecord.recorded_at ? new Date(latestRecord.recorded_at).toLocaleTimeString(isRTL ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
+              </AppText>
+            </View>
+            <View style={s.vitalsGrid}>
+              <LiveVitalCard
+                label={isRTL ? 'النبض' : 'Heart Rate'}
+                value={latestRecord.heart_rate != null ? String(latestRecord.heart_rate) : '--'}
+                unit="bpm" icon="heart" color={colors.danger}
+                isAlert={(latestRecord.heart_rate ?? 0) > 100 || (latestRecord.heart_rate ?? 999) < 50}
+              />
+              <LiveVitalCard
+                label={isRTL ? 'ضغط الدم' : 'Blood Pressure'}
+                value={latestRecord.blood_pressure_systolic != null ? `${latestRecord.blood_pressure_systolic}/${latestRecord.blood_pressure_diastolic}` : '--'}
+                unit="mmHg" icon="fitness" color={colors.warning}
+                isAlert={(latestRecord.blood_pressure_systolic ?? 0) > 140}
+              />
+              <LiveVitalCard
+                label={isRTL ? 'الأكسجين' : 'SpO2'}
+                value={latestRecord.oxygen_saturation != null ? String(latestRecord.oxygen_saturation) : '--'}
+                unit="%" icon="water" color={colors.primary}
+                isAlert={(latestRecord.oxygen_saturation ?? 100) < 95}
+              />
+              <LiveVitalCard
+                label={isRTL ? 'الحرارة' : 'Temp'}
+                value={latestRecord.temperature != null ? String(latestRecord.temperature) : '--'}
+                unit="°C" icon="thermometer" color={colors.success}
+                isAlert={(latestRecord.temperature ?? 36) > 37.5}
+              />
+            </View>
+          </View>
         )}
 
         {/* ═══ Period Filter ═══ */}

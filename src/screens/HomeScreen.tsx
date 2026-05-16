@@ -26,7 +26,7 @@ import { vitalsService, type VitalsRecord } from "../services/vitals.service";
 import { medicationService, type Medication } from "../services/medication.service";
 import { notificationService } from "../services/notification.service";
 import { translations } from "../constants/translations";
-import { generateRealisticWeek, buildWeeklyAnalytics } from "../utils/vitalsAnalytics";
+import { recordsToDays, buildWeeklyAnalytics, EMPTY_ANALYTICS } from "../utils/vitalsAnalytics";
 import { formatMedicationTime, parseMedicationTimes } from "../lib/medications/medicationSchedule";
 import type { MainTabParamList, MainStackParamList } from "../navigation/types";
 import {
@@ -51,6 +51,7 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   const [patientName, setPatientName] = useState("");
   const [latestVitals, setLatestVitals] = useState<VitalsRecord | null>(null);
+  const [weekData, setWeekData] = useState(EMPTY_ANALYTICS);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -61,14 +62,18 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
       const profile = await patientService.getProfile(session.user.id);
       if (profile) {
         setPatientName(profile.full_name ?? "");
-        const [vitals, meds, notifs] = await Promise.all([
+        const [vitals, allVitals, meds, notifs] = await Promise.all([
           vitalsService.getLatestVitals(profile.id),
+          vitalsService.getVitalsHistory(profile.id, 7),
           medicationService.getMedications(profile.id),
           notificationService.getNotifications(session.user.id),
         ]);
         setLatestVitals(vitals);
         setMedications(meds.filter((m) => (m.active ?? m.is_active) !== false));
         setUnreadCount(notifs.filter((n) => !n.is_read).length);
+        // Build weekly analytics from real records only
+        const days = recordsToDays(allVitals, isAr);
+        setWeekData(buildWeeklyAnalytics(days));
       }
     } catch {
       // Silent fail - production ready
@@ -132,11 +137,8 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
     };
   }, [latestVitals, isAr, colors]);
 
-  // Week data for charts
-  const week = useMemo(() => {
-    const days = generateRealisticWeek(74, 120, 78, isAr);
-    return buildWeeklyAnalytics(days);
-  }, [language]);
+  // Week data from real DB records (set in loadData above)
+  const week = weekData;
 
   const weekDia = useMemo(() => {
     if (!week.days.length) return 80;
@@ -197,22 +199,24 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
   // Alert flag
   const showAlert = healthStatus.color === colors.danger;
 
-  // Wellness score
+  // Wellness score — real data only, 0 if no data
   const wellnessScore = useMemo(() => {
-    if (!latestVitals) return 72;
+    if (!latestVitals) return 0; // no fake default score
     const hrScore = latestVitals.heart_rate
       ? Math.max(0, 100 - Math.abs(latestVitals.heart_rate - 72) * 2)
-      : 80;
+      : 0;
     const spo2Score = latestVitals.oxygen_saturation
       ? Math.max(0, (latestVitals.oxygen_saturation - 90) * 10)
-      : 90;
+      : 0;
     const bpScore = latestVitals.blood_pressure_systolic
       ? Math.max(0, 100 - Math.abs(latestVitals.blood_pressure_systolic - 120) * 1.5)
-      : 85;
+      : 0;
+    if (hrScore === 0 && spo2Score === 0 && bpScore === 0) return 0;
     return Math.round((hrScore + spo2Score + bpScore) / 3);
   }, [latestVitals]);
 
   const wellnessInsight = useMemo(() => {
+    if (wellnessScore === 0) return isAr ? "لا توجد بيانات حقيقية بعد" : "No real health data yet";
     if (wellnessScore >= 80) return isAr ? "حالتك الصحية ممتازة!" : "Your health is excellent!";
     if (wellnessScore >= 60) return isAr ? "حالتك جيدة بشكل عام" : "Your health is generally good";
     return isAr ? "ينصح بمتابعة الطبيب" : "Consider consulting your doctor";
@@ -517,11 +521,11 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
             title={isAr ? "درجة الحرارة" : "Temperature"}
             icon="thermometer"
             iconColor={colors.warning}
-            value="36.8"
+            value={latestVitals?.temperature != null ? String(latestVitals.temperature) : '--'}
             unit="°C"
             trend="stable"
             trendLabel={isAr ? "مستقر" : "Stable"}
-            data={[36.5, 36.7, 36.6, 36.8, 36.7, 36.9, 36.8]}
+            data={week.days.length > 0 ? week.days.map((d) => d.temp).filter(v => v > 0) : [0]}
             backgroundColor={colors.warning + "15"}
             isRTL={isAr}
             colors={colors}
