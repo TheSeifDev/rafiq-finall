@@ -12,7 +12,7 @@
  *   - Anomaly flags (motion, implausible, conflict, stale)
  *   - Sensor artifact rejection (rolling median, outlier, impossible transition)
  */
-import type { VitalsReading } from '../services/wearable/ble.types';
+import type { VitalsReading } from '../services/wearable/ble.service';
 import { computeConfidenceScore, type ConfidenceScore, type VitalReadingWithMeta } from './healthEngine';
 
 // ─── Types ─────────────────────────────────────────────────────────────────

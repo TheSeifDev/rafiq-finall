@@ -22,9 +22,8 @@ import { AppText } from '../components/ui/AppText';
 import { useTheme } from '../theme/useTheme';
 import { useAppStore } from '../store/app.store';
 import { useAuthStore } from '../store/auth.store';
-import { wearableService, type WearableDevice } from '../services/wearable/ble.service';
-import type { VitalsReading } from '../services/wearable/ble.types';
-import type { SignalQuality } from '../services/wearable/ble.types';
+import * as wearable from '../services/wearable/ble.service';
+import type { WearableProvider, VitalsReading, SignalQuality, WearableDevice as WearableDeviceType } from '../types/wearable';
 import { vitalsService } from '../services/vitals.service';
 import { patientService } from '../services/patient.service';
 import { spacing, radius } from '../theme';
@@ -57,10 +56,7 @@ type VitalsReading_ = {
 
 const pairingListeners = new Set<(event: string, data?: any) => void>();
 
-// Forward wearableService events into the screen's event system
-wearableService.onVitals((reading: VitalsReading_) => {
-  pairingListeners.forEach(l => l('vitals_read', reading));
-});
+// Wearable service events - use polling in components instead
 
 function emit(event: string, data?: any): void {
   pairingListeners.forEach(l => l(event, data));
@@ -69,9 +65,17 @@ function emit(event: string, data?: any): void {
 async function pairingScan(): Promise<WearableDevice_[]> {
   emit('scan_start');
   try {
-    const devices = await wearableService.scan();
-    emit('scan_complete', devices);
-    return devices;
+    const devices = await wearable.scan();
+    // Map to local type
+    const mapped: WearableDevice_[] = devices.map(d => ({
+      id: d.id,
+      name: d.name,
+      rssi: undefined,
+      batteryLevel: d.batteryLevel ?? undefined,
+      signalQuality: d.signalQuality ?? 'unknown',
+    }));
+    emit('scan_complete', mapped);
+    return mapped;
   } finally {
     emit('scan_end');
   }
@@ -79,16 +83,16 @@ async function pairingScan(): Promise<WearableDevice_[]> {
 
 async function pairingConnect(deviceId: string, deviceName: string): Promise<void> {
   emit('connecting', { id: deviceId, name: deviceName });
-  await wearableService.connect(deviceId);
+  await wearable.connect(deviceId);
   emit('connected', { id: deviceId, name: deviceName });
 }
 
-async function pairingReadVitals(): Promise<VitalsReading_> {
-  return wearableService.readVitals();
+async function pairingReadVitals(userId?: string): Promise<VitalsReading_> {
+  return wearable.readVitals(userId || '');
 }
 
-async function pairingDisconnect(): Promise<void> {
-  await wearableService.disconnect();
+async function pairingDisconnect(userId?: string): Promise<void> {
+  await wearable.disconnect(userId || '', userId || '');
   emit('disconnected');
 }
 
@@ -368,7 +372,7 @@ export function WearablePairingScreen(): React.JSX.Element {
     const unsubscribe = pairingListeners.add((event, data) => {
       switch (event) {
         case 'scan_complete':
-          setDevices(data as WearableDevice[]);
+          setDevices(data as WearableDevice_[]);
           setScanning(false);
           break;
         case 'connected':
@@ -413,7 +417,7 @@ export function WearablePairingScreen(): React.JSX.Element {
       setConnectedDeviceName(device.name);
       // Auto-read vitals on connect
       setLoadingVitals(true);
-      const reading = await pairingReadVitals();
+      const reading = await pairingReadVitals(session?.user?.id);
       setLiveReading(reading);
     } catch (err) {
       Alert.alert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل الاتصال' : 'Connection failed');
@@ -422,7 +426,7 @@ export function WearablePairingScreen(): React.JSX.Element {
 
   const handleDisconnect = useCallback(async () => {
     try {
-      await pairingDisconnect();
+      await pairingDisconnect(session?.user?.id);
       setConnectedDeviceId(null);
       setConnectedDeviceName(null);
       setLiveReading(null);
@@ -436,7 +440,7 @@ export function WearablePairingScreen(): React.JSX.Element {
     if (!connectedDeviceId || !liveReading) return;
     try {
       setSyncing(true);
-      const reading = await pairingReadVitals();
+      const reading = await pairingReadVitals(session?.user?.id);
       setLiveReading(reading);
       // Save to Supabase via service
       if (session?.user.id) {
@@ -467,7 +471,7 @@ export function WearablePairingScreen(): React.JSX.Element {
     if (!connectedDeviceId) return;
     setLoadingVitals(true);
     try {
-      const reading = await pairingReadVitals();
+      const reading = await pairingReadVitals(session?.user?.id);
       setLiveReading(reading);
     } catch (err) {
       Alert.alert(isAr ? 'خطأ' : 'Error', isAr ? 'فشل قراءة البيانات' : 'Failed to read vitals');

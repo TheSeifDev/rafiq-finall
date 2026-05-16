@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import 'react-native-get-random-values';
 import { LogBox, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';

@@ -249,3 +249,129 @@ CREATE TABLE IF NOT EXISTS devices (
 );
 
 CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
+
+-- Wearable Connections (Provider links)
+CREATE TABLE IF NOT EXISTS wearable_connections (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  provider_device_id TEXT,
+  access_token TEXT,
+  refresh_token TEXT,
+  expires_at TEXT,
+  connected_at TEXT NOT NULL,
+  last_sync TEXT,
+  is_active INTEGER DEFAULT 1,
+  version INTEGER DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by_device TEXT,
+  is_deleted INTEGER DEFAULT 0,
+  deleted_at TEXT,
+  deleted_by TEXT,
+  FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_wearable_connections_user ON wearable_connections(user_id);
+CREATE INDEX IF NOT EXISTS idx_wearable_connections_provider ON wearable_connections(provider);
+
+-- Wearable Vitals
+CREATE TABLE IF NOT EXISTS wearable_vitals (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  patient_id TEXT,
+  provider TEXT NOT NULL,
+  heart_rate REAL,
+  blood_pressure_systolic REAL,
+  blood_pressure_diastolic REAL,
+  oxygen_saturation REAL,
+  temperature REAL,
+  steps INTEGER,
+  sleep_seconds INTEGER,
+  activity_calories REAL,
+  recorded_at TEXT NOT NULL,
+  synced_to_cloud INTEGER DEFAULT 0,
+  version INTEGER DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by_device TEXT,
+  is_deleted INTEGER DEFAULT 0,
+  deleted_at TEXT,
+  deleted_by TEXT,
+  FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wearable_vitals_user ON wearable_vitals(user_id);
+CREATE INDEX IF NOT EXISTS idx_wearable_vitals_provider ON wearable_vitals(provider);
+CREATE INDEX IF NOT EXISTS idx_wearable_vitals_recorded ON wearable_vitals(recorded_at);
+CREATE INDEX IF NOT EXISTS idx_wearable_vitals_sync ON wearable_vitals(synced_to_cloud, recorded_at);
+
+-- Wearable Sleep Sessions
+CREATE TABLE IF NOT EXISTS wearable_sleep_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  patient_id TEXT,
+  provider TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  total_seconds INTEGER,
+  deep_seconds INTEGER,
+  light_seconds INTEGER,
+  rem_seconds INTEGER,
+  awake_seconds INTEGER,
+  efficiency REAL,
+  version INTEGER DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by_device TEXT,
+  is_deleted INTEGER DEFAULT 0,
+  deleted_at TEXT,
+  deleted_by TEXT,
+  FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wearable_sleep_user ON wearable_sleep_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_wearable_sleep_start ON wearable_sleep_sessions(start_time);
+
+-- Wearable Activity Sessions
+CREATE TABLE IF NOT EXISTS wearable_activity_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  patient_id TEXT,
+  provider TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  activity_type TEXT,
+  duration_seconds INTEGER,
+  distance_meters REAL,
+  calories REAL,
+  heart_rate_avg INTEGER,
+  heart_rate_max INTEGER,
+  steps INTEGER,
+  version INTEGER DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by_device TEXT,
+  is_deleted INTEGER DEFAULT 0,
+  deleted_at TEXT,
+  deleted_by TEXT,
+  FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wearable_activity_user ON wearable_activity_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_wearable_activity_start ON wearable_activity_sessions(start_time);
+
+-- Wearable Sync Queue
+CREATE TABLE IF NOT EXISTS wearable_sync_queue (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  operation TEXT NOT NULL CHECK (operation IN ('insert', 'update', 'delete')),
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  attempts INTEGER DEFAULT 0,
+  max_attempts INTEGER DEFAULT 3,
+  last_attempt TEXT,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'dead')),
+  error_message TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  processed_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_wearable_sync_queue_status ON wearable_sync_queue(status);
+CREATE INDEX IF NOT EXISTS idx_wearable_sync_queue_user ON wearable_sync_queue(user_id);

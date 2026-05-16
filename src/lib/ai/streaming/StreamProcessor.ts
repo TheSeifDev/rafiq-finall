@@ -1,6 +1,12 @@
 /**
- * Stream Processor
- * Production-grade stream handling with throttling, buffering, and memory management
+ * Stream Processor — Expo SDK 54 React Native compatible.
+ *
+ * STREAMING REMOVED: React Native fetch does NOT support response.body /
+ * ReadableStream / getReader(). The StreamProcessor class is kept for
+ * interface compatibility but delegates all work to safe JSON parsing.
+ *
+ * The process() method now uses response.text() → JSON instead of
+ * response.body.getReader(), which is the root cause of "No response body".
  */
 
 import { SSEParser, type SSEEvent } from './SSEParser';
@@ -26,23 +32,25 @@ export interface StreamResult {
 }
 
 const DEFAULT_CONFIG: StreamConfig = {
-  throttleMs: 16,        // ~60fps
-  bufferSize: 10,       // Buffer chunks before flush
-  timeoutMs: 60000,     // 60s timeout
+  throttleMs: 16,
+  bufferSize: 10,
+  timeoutMs: 60000,
   maxRetries: 3,
   retryDelayMs: 1000,
 };
 
 /**
- * Stream Processor - handles fetch, parsing, throttling, and cleanup
+ * StreamProcessor — delegates to safe JSON parsing.
+ *
+ * Kept as a class for backward compatibility. All internal streaming
+ * (ReadableStream / getReader) has been removed because it is not
+ * supported in Expo SDK 54 React Native.
  */
 export class StreamProcessor {
   private config: StreamConfig;
+  // SSEParser kept only so imports from SSEParser.ts still compile
   private parser: SSEParser;
-  private abortController: AbortController | null = null;
-  private timeoutId: NodeJS.Timeout | null = null;
   private isActive: boolean = false;
-  private lastChunkTime: number = 0;
   private chunkBuffer: string = '';
   private reasoningBuffer: string = '';
   private totalChunks: number = 0;
@@ -53,18 +61,25 @@ export class StreamProcessor {
   }
 
   /**
-   * Process streaming fetch response
+   * Process a fetch Response safely.
+   *
+   * Uses response.text() → JSON instead of response.body.getReader(),
+   * then calls onChunk once with the full content.
    */
   async process(
     response: Response,
     callbacks: StreamCallbacks
   ): Promise<StreamResult> {
     if (!response.ok) {
-      throw new Error(`HTTP error: ${response.status}`);
-    }
-
-    if (!response.body) {
-      throw new Error('No response body');
+      let errorBody = '';
+      try {
+        errorBody = await response.text();
+      } catch {
+        errorBody = '(unreadable)';
+      }
+      const err = new Error(`HTTP error ${response.status}: ${errorBody.slice(0, 300)}`);
+      callbacks.onError(err);
+      throw err;
     }
 
     // Reset state
@@ -74,140 +89,75 @@ export class StreamProcessor {
     this.totalChunks = 0;
     this.isActive = true;
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8', { fatal: false });
+    let raw = '';
+    try {
+      raw = await response.text();
+    } catch (err: any) {
+      const error = new Error(
+        `[StreamProcessor] Failed to read response text: ${err?.message ?? String(err)}`
+      );
+      callbacks.onError(error);
+      this.isActive = false;
+      throw error;
+    }
+
+    if (!raw || !raw.trim()) {
+      const error = new Error('[StreamProcessor] Empty response body from provider');
+      callbacks.onError(error);
+      this.isActive = false;
+      throw error;
+    }
+
+    let data: any;
+    try {
+      data = JSON.parse(raw);
+    } catch (err: any) {
+      const error = new Error(
+        `[StreamProcessor] JSON parse failed: ${err?.message ?? String(err)} — raw: ${raw.slice(0, 200)}`
+      );
+      callbacks.onError(error);
+      this.isActive = false;
+      throw error;
+    }
+
+    const content: string = data?.choices?.[0]?.message?.content ?? '';
+    const reasoning: string = data?.choices?.[0]?.message?.reasoning ?? '';
+
+    this.chunkBuffer = content;
+    this.reasoningBuffer = reasoning;
+    this.totalChunks = 1;
+
+    // Single onChunk call (no token-by-token streaming on RN)
+    try {
+      callbacks.onChunk(content, reasoning || undefined);
+    } catch (err) {
+      console.warn('[StreamProcessor] onChunk callback threw:', (err as Error).message);
+    }
 
     try {
-      while (this.isActive) {
-        // Check for abort
-        if (this.abortController?.signal.aborted) {
-          throw new Error('Stream aborted');
-        }
-
-        // Read with timeout
-        const readPromise = reader.read();
-        const timeoutPromise = new Promise<{ done: boolean; value?: Uint8Array }>(
-          (_, reject) => {
-            this.timeoutId = setTimeout(() => {
-              reject(new Error('Read timeout'));
-            }, this.config.timeoutMs);
-          }
-        );
-
-        let readResult: { done: boolean; value?: Uint8Array };
-        try {
-          readResult = await Promise.race([readPromise, timeoutPromise]);
-        } finally {
-          if (this.timeoutId) {
-            clearTimeout(this.timeoutId);
-            this.timeoutId = null;
-          }
-        }
-
-        if (readResult.done) {
-          break;
-        }
-
-        // Decode chunk
-        const chunk = decoder.decode(readResult.value, { stream: true });
-        this.totalChunks++;
-
-        // Parse events
-        const events = this.parser.feed(chunk);
-
-        // Process events
-        for (const event of events) {
-          this.processEvent(event, callbacks);
-        }
-
-        // Throttled flush
-        this.flushIfNeeded(callbacks);
-      }
-
-      // Final flush
-      const finalEvent = this.parser.flush();
-      if (finalEvent) {
-        this.processEvent(finalEvent, callbacks);
-      }
-
       callbacks.onDone();
-
-      return {
-        content: this.chunkBuffer,
-        reasoning: this.reasoningBuffer,
-        chunks: this.totalChunks,
-      };
-    } finally {
-      // Cleanup
-      this.isActive = false;
-      try {
-        reader.releaseLock();
-      } catch { /* ignore */ }
+    } catch (err) {
+      console.warn('[StreamProcessor] onDone callback threw:', (err as Error).message);
     }
+
+    this.isActive = false;
+
+    return {
+      content,
+      reasoning,
+      chunks: this.totalChunks,
+    };
   }
 
-  /**
-   * Process single SSE event
-   */
-  private processEvent(event: SSEEvent, callbacks: StreamCallbacks): void {
-    switch (event.type) {
-      case 'reasoning':
-        this.reasoningBuffer += event.data;
-        callbacks.onChunk(this.chunkBuffer, this.reasoningBuffer);
-        break;
-
-      case 'content':
-        this.chunkBuffer += event.data;
-        callbacks.onChunk(this.chunkBuffer, this.reasoningBuffer);
-        break;
-
-      case 'done':
-        this.isActive = false;
-        break;
-
-      case 'error':
-        callbacks.onError(new Error(event.data));
-        break;
-    }
-  }
-
-  /**
-   * Flush buffer if throttling threshold reached
-   */
-  private flushIfNeeded(callbacks: StreamCallbacks): void {
-    const now = Date.now();
-    const timeSinceLastFlush = now - this.lastChunkTime;
-
-    if (timeSinceLastFlush >= this.config.throttleMs) {
-      this.lastChunkTime = now;
-      callbacks.onChunk(this.chunkBuffer, this.reasoningBuffer);
-    }
-  }
-
-  /**
-   * Abort ongoing stream
-   */
   abort(): void {
     this.isActive = false;
-    this.abortController?.abort();
-
-    if (this.timeoutId) {
-      clearTimeout(this.timeoutId);
-      this.timeoutId = null;
-    }
   }
 
-  /**
-   * Create abort signal for fetch
-   */
   createSignal(): AbortSignal {
-    this.abortController = new AbortController();
-    return this.abortController.signal;
+    const controller = new AbortController();
+    return controller.signal;
   }
 
-  /**
-   * Get current state
-   */
   getStats(): { chunks: number; contentLength: number; reasoningLength: number } {
     return {
       chunks: this.totalChunks,
@@ -218,7 +168,8 @@ export class StreamProcessor {
 }
 
 /**
- * Execute fetch with retry and timeout
+ * Execute fetch with retry and timeout.
+ * Safe on React Native — does not touch response.body.
  */
 export async function fetchWithRetry(
   url: string,
@@ -230,7 +181,10 @@ export async function fetchWithRetry(
   for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), options.timeout || config.timeoutMs);
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        options.timeout || config.timeoutMs
+      );
 
       const response = await fetch(url, {
         ...options,
@@ -239,7 +193,7 @@ export async function fetchWithRetry(
 
       clearTimeout(timeoutId);
 
-      // Retry on server errors
+      // Retry on server errors (5xx) but not on 4xx
       if (!response.ok && response.status >= 500 && attempt < config.maxRetries) {
         const delay = config.retryDelayMs * Math.pow(2, attempt);
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -249,7 +203,6 @@ export async function fetchWithRetry(
       return response;
     } catch (error) {
       lastError = error as Error;
-
       if (attempt < config.maxRetries) {
         const delay = config.retryDelayMs * Math.pow(2, attempt);
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -257,12 +210,9 @@ export async function fetchWithRetry(
     }
   }
 
-  throw lastError || new Error('Fetch failed');
+  throw lastError || new Error('Fetch failed after retries');
 }
 
-/**
- * Create configured stream processor
- */
 export function createStreamProcessor(config?: Partial<StreamConfig>): StreamProcessor {
   return new StreamProcessor(config);
 }

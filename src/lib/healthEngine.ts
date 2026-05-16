@@ -9,7 +9,7 @@
  * Emergency thresholds trigger critical alerts.
  * Confidence scoring weights sensor reliability, temporal freshness, and artifact detection.
  */
-import type { VitalsReading } from '../services/wearable/ble.types';
+import type { VitalsReading } from '../services/wearable/ble.service';
 
 export type VitalStatus = 'normal' | 'elevated' | 'critical' | 'degraded' | 'unknown';
 export type VitalType = 'heart_rate' | 'spo2' | 'bp_systolic' | 'bp_diastolic' | 'temperature' | 'steps';

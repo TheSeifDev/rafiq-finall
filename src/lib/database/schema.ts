@@ -251,7 +251,45 @@ CREATE TABLE IF NOT EXISTS devices (
   deleted_by TEXT,
   FOREIGN KEY (user_id) REFERENCES patients(id)
 );
-CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);`;
+CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
+
+CREATE TABLE IF NOT EXISTS ai_conversations (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  title TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT,
+  version INTEGER DEFAULT 1,
+  updated_by_device TEXT,
+  is_deleted INTEGER DEFAULT 0,
+  deleted_at TEXT,
+  deleted_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ai_conversations_user ON ai_conversations(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_conversations_updated ON ai_conversations(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+  content TEXT NOT NULL DEFAULT '',
+  reasoning_details TEXT,
+  provider TEXT,
+  model TEXT,
+  metadata TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT,
+  version INTEGER DEFAULT 1,
+  updated_by_device TEXT,
+  is_deleted INTEGER DEFAULT 0,
+  deleted_at TEXT,
+  deleted_by TEXT,
+  FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id)
+);
+CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation ON ai_messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_ai_messages_user ON ai_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_messages_created ON ai_messages(created_at ASC);`;
 }
 
 export const SCHEMA_SQL = ''; // Async loader above; sync export for compatibility

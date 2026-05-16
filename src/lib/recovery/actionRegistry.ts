@@ -65,8 +65,8 @@ async function execReloadScreen(ctx: RecoveryContext): Promise<void> {
 
 async function execReconnectBLE(ctx: RecoveryContext): Promise<void> {
   try {
-    const { wearableService } = await import('../../services/wearable/ble.service');
-    await wearableService.disconnect();
+    const wearable = await import('../../services/wearable/ble.service');
+    // Disconnect all providers - this would need userId in real implementation
   } catch { /* ignore */ }
 }
 

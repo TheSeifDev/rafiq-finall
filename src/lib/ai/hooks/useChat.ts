@@ -1,6 +1,12 @@
 /**
  * Chat Hook
- * Manages chat state, persistence, and AI interactions
+ * Manages chat state, AsyncStorage persistence, and AI interactions.
+ *
+ * STREAMING REMOVED: providerManager.generateStreaming() falls back to
+ * non-streaming on Expo SDK 54 React Native.
+ *
+ * SAVE BUG FIXED: saveMessages() is called with explicit list, not
+ * stale closure state. Persistence is isolated from generation.
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
@@ -10,6 +16,8 @@ import { AIMessage, HealthContext } from '../providers/types';
 
 const STORAGE_KEY = '@rafiq_chat_history';
 const MAX_MESSAGES = 50;
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ChatState {
   messages: ChatMessage[];
@@ -32,177 +40,195 @@ interface UseChatOptions {
   onError?: (error: string) => void;
 }
 
+// ── Hook ──────────────────────────────────────────────────────────────────────
+
 export function useChat({ healthContext, isRTL = false, onError }: UseChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  const streamingContentRef = useRef('');
 
   // Load persisted messages on mount
   useEffect(() => {
     loadMessages();
   }, []);
 
-  // Persist messages on change
-  useEffect(() => {
-    if (messages.length > 0) {
-      saveMessages(messages);
-    }
-  }, [messages]);
+  // ── Persistence ───────────────────────────────────────────────────────────
 
   const loadMessages = async () => {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const parsed = JSON.parse(stored);
-        const restored = parsed.map((m: any) => ({
+        const parsed: any[] = JSON.parse(stored);
+        const restored: ChatMessage[] = parsed.map(m => ({
           ...m,
           timestamp: new Date(m.timestamp),
+          isStreaming: false,
         }));
         setMessages(restored);
       }
     } catch (err) {
-      console.log('[Chat] Failed to load messages:', err);
+      console.warn('[Chat] Failed to load messages:', (err as Error).message);
     }
   };
 
-  const saveMessages = async (msgs: ChatMessage[]) => {
+  /**
+   * Persist messages to AsyncStorage.
+   * Receives explicit list to avoid stale closures.
+   * Failure is isolated — never propagates to caller.
+   */
+  const saveMessages = async (msgs: ChatMessage[]): Promise<void> => {
     try {
       const toSave = msgs.slice(-MAX_MESSAGES).map(m => ({
         ...m,
-        timestamp: m.timestamp.toISOString(),
+        timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+        isStreaming: false,
       }));
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     } catch (err) {
-      console.log('[Chat] Failed to save messages:', err);
+      console.error('[Chat] Persistence failed (non-fatal):', {
+        message: (err as Error).message,
+        location: 'saveMessages',
+      });
     }
   };
+
+  // ── Clear ─────────────────────────────────────────────────────────────────
 
   const clearHistory = useCallback(async () => {
     setMessages([]);
     try {
       await AsyncStorage.removeItem(STORAGE_KEY);
     } catch (err) {
-      console.log('[Chat] Failed to clear history:', err);
+      console.warn('[Chat] Failed to clear history:', (err as Error).message);
     }
   }, []);
 
-  const sendMessage = useCallback(async (content: string) => {
-    // Cancel any ongoing request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+  // ── Send message ──────────────────────────────────────────────────────────
 
-    const userMessage: ChatMessage = {
-      id: Date.now().toString() + '_user',
-      role: 'user',
-      content,
-      timestamp: new Date(),
-    };
+  const sendMessage = useCallback(
+    async (content: string) => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
 
-    // Add user message immediately
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
-    setError(null);
+      const userMessage: ChatMessage = {
+        id: `${Date.now()}_user`,
+        role: 'user',
+        content,
+        timestamp: new Date(),
+      };
 
-    // Create placeholder for streaming response
-    const assistantMessage: ChatMessage = {
-      id: Date.now().toString() + '_assistant',
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-      isStreaming: true,
-    };
+      const assistantId = `${Date.now()}_assistant`;
+      const assistantPlaceholder: ChatMessage = {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+        isStreaming: true,
+      };
 
-    setMessages(prev => [...prev, assistantMessage]);
-    streamingContentRef.current = '';
+      setMessages(prev => [...prev, userMessage, assistantPlaceholder]);
+      setIsLoading(true);
+      setError(null);
 
-    // Prepare messages for AI
-    const aiMessages: AIMessage[] = messages
-      .filter(m => !m.isStreaming)
-      .map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      }));
+      // Build AI message history from current state before this message
+      // Note: do NOT capture `messages` in the closure — use the functional
+      // form of setMessages or capture explicitly from the latest rendered list.
+      // Here we snapshot via the setter's updater pattern in a ref.
+      let historySnapshot: AIMessage[] = [];
+      setMessages(prev => {
+        historySnapshot = prev
+          .filter(m => !m.isStreaming && m.id !== assistantId)
+          .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+        return prev; // No-op update, just to read latest state
+      });
 
-    abortControllerRef.current = new AbortController();
+      try {
+        const response = await providerManager.generateStreaming(
+          historySnapshot,
+          healthContext,
+          // onChunk — called once with full content (non-streaming on RN)
+          (chunk: string) => {
+            setMessages(prev =>
+              prev.map(m =>
+                m.id === assistantId ? { ...m, content: chunk } : m
+              )
+            );
+          },
+          abortControllerRef.current.signal
+        );
 
-    try {
-      const response = await providerManager.generateStreaming(
-        aiMessages,
-        healthContext,
-        (chunk) => {
-          streamingContentRef.current += chunk;
+        const suggestedReplies = generateSuggestedReplies(content, response.content, isRTL);
+
+        setMessages(prev => {
+          const updated = prev.map(m =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  isStreaming: false,
+                  content: response.content,
+                  suggestedReplies,
+                }
+              : m
+          );
+          // Isolated persistence
+          saveMessages(updated);
+          return updated;
+        });
+
+        console.log('[Chat] Response from:', response.provider, response.model);
+      } catch (err: any) {
+        if (err?.name === 'AbortError' || err?.message?.includes('Aborted')) {
           setMessages(prev =>
             prev.map(m =>
-              m.id === assistantMessage.id
-                ? { ...m, content: streamingContentRef.current }
-                : m
+              m.id === assistantId ? { ...m, isStreaming: false } : m
             )
           );
-        },
-        abortControllerRef.current.signal
-      );
+          setIsLoading(false);
+          return;
+        }
 
-      // Update final message with suggested replies
-      const suggestedReplies = generateSuggestedReplies(content, response.content, isRTL);
+        const errorMessage: string = err?.message ?? 'Failed to get response';
 
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === assistantMessage.id
-            ? {
-                ...m,
-                isStreaming: false,
-                suggestedReplies,
-                content: response.content,
-              }
-            : m
-        )
-      );
+        console.error('[Chat] Generation failed:', {
+          message: errorMessage,
+          stack: err?.stack,
+        });
 
-      console.log('[Chat] Response from:', response.provider, response.model);
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        return; // User cancelled
+        setError(errorMessage);
+        onError?.(errorMessage);
+
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  isStreaming: false,
+                  content: isRTL
+                    ? 'عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.'
+                    : 'Sorry, something went wrong. Please try again.',
+                }
+              : m
+          )
+        );
+      } finally {
+        setIsLoading(false);
+        abortControllerRef.current = null;
       }
+    },
+    [healthContext, isRTL, onError]
+  );
 
-      const errorMessage = err.message || 'Failed to get response';
-      setError(errorMessage);
-      onError?.(errorMessage);
-
-      // Update message with error
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === assistantMessage.id
-            ? {
-                ...m,
-                isStreaming: false,
-                content: isRTL
-                  ? 'عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.'
-                  : 'Sorry, something went wrong. Please try again.',
-              }
-            : m
-        )
-      );
-    } finally {
-      setIsLoading(false);
-      abortControllerRef.current = null;
-    }
-  }, [messages, healthContext, isRTL, onError]);
+  // ── Cancel ────────────────────────────────────────────────────────────────
 
   const cancelRequest = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
-
-      // Mark streaming as complete
-      setMessages(prev =>
-        prev.map(m =>
-          m.isStreaming ? { ...m, isStreaming: false } : m
-        )
-      );
+      setMessages(prev => prev.map(m => (m.isStreaming ? { ...m, isStreaming: false } : m)));
       setIsLoading(false);
     }
   }, []);
@@ -217,70 +243,49 @@ export function useChat({ healthContext, isRTL = false, onError }: UseChatOption
   };
 }
 
-/**
- * Generate contextual suggested replies based on conversation
- */
+// ── Suggested replies ─────────────────────────────────────────────────────────
+
 function generateSuggestedReplies(
   userMessage: string,
-  response: string,
+  _response: string,
   isRTL: boolean
 ): string[] {
   const lowerUser = userMessage.toLowerCase();
-  const lowerResponse = response.toLowerCase();
 
-  const suggestions: string[] = [];
-
-  // Context-based suggestions
   if (lowerUser.includes('heart') || lowerUser.includes('نبض') || lowerUser.includes('heart rate')) {
-    suggestions.push(
-      isRTL ? 'ما هو المعدل الطبيعي للنبض؟' : 'What is a normal heart rate?',
-      isRTL ? 'كيف أخفض معدل نبضاتي؟' : 'How can I lower my heart rate?'
-    );
-  } else if (lowerUser.includes('medication') || lowerUser.includes('دواء')) {
-    suggestions.push(
-      isRTL ? 'Remind me to take my meds' : 'Remind me to take my meds',
-      isRTL ? 'ما هي آثار جانبية؟' : 'What are the side effects?'
-    );
-  } else if (lowerUser.includes('blood pressure') || lowerUser.includes('ضغط')) {
-    suggestions.push(
-      isRTL ? 'ما هو الضغط الطبيعي؟' : 'What is normal blood pressure?',
-      isRTL ? 'كيف أتحكم بضغط الدم؟' : 'How to manage blood pressure?'
-    );
-  } else if (lowerUser.includes('sleep') || lowerUser.includes('نوم')) {
-    suggestions.push(
-      isRTL ? 'نصائح للنوم أفضل' : 'Tips for better sleep',
-      isRTL ? 'كم ساعة أنام؟' : 'How many hours should I sleep?'
-    );
-  } else if (lowerUser.includes('food') || lowerUser.includes('طعام')) {
-    suggestions.push(
-      isRTL ? 'وجبات صحية' : 'Healthy meal plans',
-      isRTL ? 'ما Foods to avoid' : 'Foods to avoid'
-    );
-  } else if (lowerUser.includes('exercise') || lowerUser.includes('رياضة')) {
-    suggestions.push(
-      isRTL ? 'تمارين مناسبة' : 'Suitable exercises',
-      isRTL ? 'كم مرة أسبوعياً؟' : 'How often per week?'
-    );
-  } else {
-    // Default suggestions
-    if (isRTL) {
-      suggestions.push(
-        'Explain more',
-        'Give me health tips',
-        'What about my medications?',
-        'Help me track vitals'
-      );
-    } else {
-      suggestions.push(
-        'Tell me more',
-        'Give me health tips',
-        'What about my medications?',
-        'Help me track vitals'
-      );
-    }
+    return isRTL
+      ? ['ما هو المعدل الطبيعي للنبض؟', 'كيف أخفض معدل نبضاتي؟']
+      : ['What is a normal heart rate?', 'How can I lower my heart rate?'];
+  }
+  if (lowerUser.includes('medication') || lowerUser.includes('دواء')) {
+    return isRTL
+      ? ['تذكيرني بأدويتي', 'ما هي الآثار الجانبية؟']
+      : ['Remind me to take my meds', 'What are the side effects?'];
+  }
+  if (lowerUser.includes('blood pressure') || lowerUser.includes('ضغط')) {
+    return isRTL
+      ? ['ما هو الضغط الطبيعي؟', 'كيف أتحكم بضغط الدم؟']
+      : ['What is normal blood pressure?', 'How to manage blood pressure?'];
+  }
+  if (lowerUser.includes('sleep') || lowerUser.includes('نوم')) {
+    return isRTL
+      ? ['نصائح للنوم أفضل', 'كم ساعة أنام؟']
+      : ['Tips for better sleep', 'How many hours should I sleep?'];
+  }
+  if (lowerUser.includes('food') || lowerUser.includes('طعام')) {
+    return isRTL
+      ? ['وجبات صحية', 'أطعمة يجب تجنبها']
+      : ['Healthy meal plans', 'Foods to avoid'];
+  }
+  if (lowerUser.includes('exercise') || lowerUser.includes('رياضة')) {
+    return isRTL
+      ? ['تمارين مناسبة', 'كم مرة أسبوعياً؟']
+      : ['Suitable exercises', 'How often per week?'];
   }
 
-  return suggestions.slice(0, 3);
+  return isRTL
+    ? ['أخبرني أكثر', 'نصائح صحية', 'ما أدويتي؟']
+    : ['Tell me more', 'Give me health tips', 'What about my medications?'];
 }
 
 export default useChat;

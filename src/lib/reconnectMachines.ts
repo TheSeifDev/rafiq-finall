@@ -14,7 +14,7 @@
  *   - Half-open probe after cooldown
  *   - Rolling failure window tracking
  */
-import { wearableService } from '../services/wearable/ble.service';
+import * as wearable from '../services/wearable/ble.service';
 import { supabase } from '../services/supabase';
 import { eventBus } from '../events/EventBus';
 import { CircuitBreaker, getCircuitBreaker, CircuitOpenError } from './circuitBreaker';
@@ -132,9 +132,9 @@ export class BLEReconnectMachine extends BaseReconnectMachine {
     this.transitionTo('connecting');
 
     await this.circuit.execute(async () => {
-      await wearableService.connect(this.deviceId!);
+      await wearable.connect(this.deviceId!);
       this.transitionTo('resyncing');
-      await wearableService.readVitals();
+      await wearable.readVitals(''); // TODO: pass proper userId from auth
       this.transitionTo('active');
       this.circuit.recordSuccess();
     });

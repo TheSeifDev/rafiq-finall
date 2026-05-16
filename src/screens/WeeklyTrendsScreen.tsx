@@ -25,7 +25,7 @@ import { spacing, radius } from "../theme";
 import { translations } from "../constants/translations";
 import { vitalsService } from "../services/vitals.service";
 import { patientService } from "../services/patient.service";
-import { wearableService } from "../services/wearable/ble.service";
+import * as wearable from "../services/wearable/ble.service";
 import { useAuthStore } from "../store/auth.store";
 import { ZoneLineChart } from "../components/charts";
 
@@ -106,8 +106,8 @@ async function buildWeeklyData(
     }
   }
 
-  if (days.length === 0) {
-    const history = await wearableService.generateHistory(7);
+  if (days.length === 0 && session?.user.id) {
+    const history = await wearable.generateHistory(session.user.id, 7);
     days = history.map((r) => {
       const date = new Date(r.timestamp);
       return {

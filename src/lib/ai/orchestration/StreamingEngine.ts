@@ -1,7 +1,12 @@
 /**
- * Streaming Engine
- * Handles SSE parsing, chunk processing, and streaming UI updates
+ * StreamingEngine — Non-streaming utilities for Expo SDK 54 React Native.
+ *
+ * IMPORTANT: React Native's fetch runtime does NOT support response.body /
+ * ReadableStream / getReader(). All streaming code has been removed.
+ * Use parseJSONResponse() for safe, non-streaming AI response parsing.
  */
+
+// ── Types re-exported for backward compatibility ──────────────────────────────
 
 export interface StreamChunk {
   type: 'content' | 'reasoning' | 'done' | 'error';
@@ -12,172 +17,119 @@ export interface StreamChunk {
 }
 
 export interface StreamingConfig {
-  throttleMs: number;        // Minimum time between UI updates
-  bufferSize: number;         // Buffer chunks before yielding
-  maxRetries: number;         // Max reconnection attempts
-  retryDelayMs: number;       // Base delay for exponential backoff
-  timeoutMs: number;          // Request timeout
+  throttleMs: number;
+  bufferSize: number;
+  maxRetries: number;
+  retryDelayMs: number;
+  timeoutMs: number;
+}
+
+export interface StreamStats {
+  tokensPerSecond: number;
+  totalTokens: number;
+  durationMs: number;
+  startTime: number;
 }
 
 const DEFAULT_CONFIG: StreamingConfig = {
-  throttleMs: 16,             // ~60fps
-  bufferSize: 5,              // Buffer 5 chunks before update
+  throttleMs: 16,
+  bufferSize: 5,
   maxRetries: 3,
   retryDelayMs: 1000,
-  timeoutMs: 30000,
+  timeoutMs: 60000,
 };
 
+// ── Safe JSON response parser (replaces parseSSEStream) ───────────────────────
+
 /**
- * Parse SSE chunk from OpenRouter
+ * Safely parse an AI API JSON response.
+ * Returns the content string and optional reasoning string.
+ * Never throws "No response body" — uses response.text() which is
+ * universally supported in React Native / Expo SDK 54.
  */
-export function parseSSEChunk(line: string): StreamChunk | null {
-  if (!line.trim() || !line.startsWith('data:')) {
-    return null;
+export async function parseJSONResponse(response: Response): Promise<{
+  content: string;
+  reasoning?: string;
+  finishReason: string;
+}> {
+  if (!response.ok) {
+    let errorBody = '';
+    try {
+      errorBody = await response.text();
+    } catch {
+      errorBody = '(could not read error body)';
+    }
+    throw new Error(
+      `[AI] HTTP ${response.status}: ${errorBody.slice(0, 300)}`
+    );
   }
 
-  const data = line.slice(5).trim();
-  if (data === '[DONE]') {
-    return { type: 'done', content: '', done: true };
-  }
-
+  let raw = '';
   try {
-    const parsed = JSON.parse(data);
-
-    // Handle OpenRouter reasoning format
-    if (parsed.choices?.[0]?.delta) {
-      const delta = parsed.choices[0].delta;
-
-      // Reasoning content
-      if (delta.reasoning) {
-        return {
-          type: 'reasoning',
-          content: '',
-          reasoning: delta.reasoning,
-        };
-      }
-
-      // Regular content
-      if (delta.content) {
-        return {
-          type: 'content',
-          content: delta.content,
-        };
-      }
-    }
-
-    // Handle openai format
-    if (parsed.choices?.[0]?.delta?.content) {
-      return {
-        type: 'content',
-        content: parsed.choices[0].delta.content,
-      };
-    }
-
-    return null;
-  } catch {
-    return { type: 'error', content: '', error: 'Failed to parse chunk' };
+    raw = await response.text();
+  } catch (err) {
+    throw new Error(`[AI] Failed to read response text: ${(err as Error).message}`);
   }
+
+  if (!raw || !raw.trim()) {
+    throw new Error('[AI] Empty response body from provider');
+  }
+
+  let data: any;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `[AI] Failed to parse JSON response: ${(err as Error).message} — raw: ${raw.slice(0, 200)}`
+    );
+  }
+
+  const choice = data?.choices?.[0];
+  if (!choice) {
+    throw new Error(
+      `[AI] No choices in response payload: ${raw.slice(0, 300)}`
+    );
+  }
+
+  const content: string = choice?.message?.content ?? '';
+  const reasoning: string | undefined = choice?.message?.reasoning ?? undefined;
+  const finishReason: string = choice?.finish_reason ?? 'stop';
+
+  return { content, reasoning, finishReason };
 }
 
 /**
- * Parse full SSE response stream
+ * REMOVED — parseSSEStream used response.body.getReader() which is
+ * unsupported in React Native / Expo SDK 54.
+ *
+ * Kept as a stub to prevent import errors in files that reference it.
+ * Always throws a clear, actionable error.
+ *
+ * @deprecated Use parseJSONResponse() instead.
  */
 export async function parseSSEStream(
-  response: Response,
-  onChunk: (chunk: StreamChunk) => void,
-  config: StreamingConfig = DEFAULT_CONFIG,
-  signal?: AbortSignal
+  _response: Response,
+  _onChunk: (chunk: StreamChunk) => void,
+  _config?: StreamingConfig,
+  _signal?: AbortSignal
 ): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw new Error('No response body');
-  }
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullContent = '';
-  let fullReasoning = '';
-  let lastUpdate = 0;
-  let bufferCount = 0;
-
-  // Create timeout handler
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Stream timeout')), config.timeoutMs);
-  });
-
-  // Create abort handler
-  const abortPromise = new Promise<never>((_, reject) => {
-    signal?.addEventListener('abort', () => {
-      reader.cancel();
-      reject(new Error('Aborted'));
-    });
-  });
-
-  try {
-    while (true) {
-      // Race between read, timeout, and abort
-      const { done, value } = await Promise.race([
-        reader.read(),
-        timeoutPromise,
-        abortPromise,
-      ]);
-
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      // Process complete lines
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        const chunk = parseSSEChunk(line);
-        if (!chunk) continue;
-
-        if (chunk.type === 'error') {
-          console.log('[Stream] Parse error:', chunk.error);
-          continue;
-        }
-
-        if (chunk.type === 'done') {
-          onChunk({ type: 'done', content: '', done: true });
-          return fullContent;
-        }
-
-        if (chunk.type === 'content') {
-          fullContent += chunk.content;
-          bufferCount++;
-
-          // Throttle UI updates
-          const now = Date.now();
-          if (bufferCount >= config.bufferSize || now - lastUpdate >= config.throttleMs) {
-            onChunk({ type: 'content', content: fullContent });
-            lastUpdate = now;
-            bufferCount = 0;
-          }
-        }
-
-        if (chunk.type === 'reasoning') {
-          fullReasoning += chunk.reasoning || '';
-          onChunk({ type: 'reasoning', content: fullContent, reasoning: fullReasoning });
-        }
-      }
-    }
-
-    // Final update
-    if (fullContent) {
-      onChunk({ type: 'content', content: fullContent });
-    }
-
-    return fullContent;
-  } finally {
-    reader.releaseLock();
-  }
+  throw new Error(
+    '[AI] parseSSEStream() is not supported on Expo SDK 54 React Native. ' +
+    'Use parseJSONResponse() with stream:false.'
+  );
 }
 
 /**
- * Retry with exponential backoff
+ * REMOVED — SSE chunk parser for legacy SSE streams.
+ * Kept as stub for import compatibility.
+ * @deprecated
  */
+export function parseSSEChunk(_line: string): StreamChunk | null {
+  return null;
+}
+
+// ── Retry helper ──────────────────────────────────────────────────────────────
+
 export async function withRetry<T>(
   fn: () => Promise<T>,
   config: StreamingConfig = DEFAULT_CONFIG,
@@ -194,10 +146,8 @@ export async function withRetry<T>(
       if (attempt < config.maxRetries) {
         const delay = config.retryDelayMs * Math.pow(2, attempt);
         const jitter = Math.random() * 0.3 * delay;
-
         onRetry?.(attempt + 1, lastError);
-        console.log(`[Stream] Retry ${attempt + 1} after ${Math.round(delay + jitter)}ms`);
-
+        console.log(`[AI] Retry ${attempt + 1} after ${Math.round(delay + jitter)}ms`);
         await new Promise(resolve => setTimeout(resolve, delay + jitter));
       }
     }
@@ -206,28 +156,15 @@ export async function withRetry<T>(
   throw lastError;
 }
 
-/**
- * Create abort controller with timeout
- */
+// ── Timeout controller ────────────────────────────────────────────────────────
+
 export function createTimeoutController(timeoutMs: number): AbortController {
   const controller = new AbortController();
-
-  setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
-
+  setTimeout(() => controller.abort(), timeoutMs);
   return controller;
 }
 
-/**
- * Calculate streaming stats
- */
-export interface StreamStats {
-  tokensPerSecond: number;
-  totalTokens: number;
-  durationMs: number;
-  startTime: number;
-}
+// ── Stream stats (kept for TS compat, no streaming occurs) ───────────────────
 
 export function createStreamStats(): StreamStats {
   return {
@@ -241,7 +178,6 @@ export function createStreamStats(): StreamStats {
 export function updateStreamStats(stats: StreamStats, contentLength: number): StreamStats {
   const now = Date.now();
   const elapsed = (now - stats.startTime) / 1000;
-
   return {
     ...stats,
     totalTokens: Math.ceil(contentLength / 4),
@@ -251,6 +187,7 @@ export function updateStreamStats(stats: StreamStats, contentLength: number): St
 }
 
 export default {
+  parseJSONResponse,
   parseSSEChunk,
   parseSSEStream,
   withRetry,

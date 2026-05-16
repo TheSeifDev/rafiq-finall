@@ -1,17 +1,19 @@
 /**
- * OpenRouter Provider
- * Production-grade native provider with proper streaming
+ * OpenRouter Provider — Non-streaming implementation for Expo SDK 54.
+ *
+ * STREAMING REMOVED: React Native fetch does NOT support response.body /
+ * ReadableStream / getReader(). All requests use stream:false and parse
+ * response.text() → JSON.
  */
 
-import { AIProvider, AIMessage, HealthContext, StreamingCallback, AIProviderError } from "./types";
-import { StreamProcessor, fetchWithRetry, type StreamConfig } from "../streaming";
-import { env } from "../../../config/env";
+import { AIProvider, AIMessage, HealthContext, StreamingCallback, AIProviderError } from './types';
+import { fetchWithRetry, type StreamConfig } from '../streaming';
+import { env } from '../../../config/env';
 
-const DEFAULT_MODEL = "openai/gpt-oss-120b:free";
-const API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const DEFAULT_MODEL = 'openai/gpt-oss-120b:free';
+const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-// Stream config
-const STREAM_CONFIG: StreamConfig = {
+const FETCH_CONFIG: StreamConfig = {
   throttleMs: 16,
   bufferSize: 5,
   timeoutMs: 60000,
@@ -19,9 +21,6 @@ const STREAM_CONFIG: StreamConfig = {
   retryDelayMs: 1000,
 };
 
-/**
- * Health state for provider
- */
 interface ProviderHealth {
   isHealthy: boolean;
   lastError: string | null;
@@ -29,15 +28,14 @@ interface ProviderHealth {
 }
 
 /**
- * OpenRouter Provider - Production-grade without SDK
+ * OpenRouter Provider — production-grade without SDK, non-streaming only.
  */
 class OpenRouterProvider implements AIProvider {
-  name = "OpenRouter";
-  id = "openrouter";
+  name = 'OpenRouter';
+  id = 'openrouter';
 
   private apiKey: string;
   private model: string;
-  private streamProcessor: StreamProcessor;
   private health: ProviderHealth = {
     isHealthy: true,
     lastError: null,
@@ -46,158 +44,173 @@ class OpenRouterProvider implements AIProvider {
   private apiKeyValidated = false;
 
   constructor(apiKey?: string, model: string = DEFAULT_MODEL) {
-    // Get API key from env helper or parameter
-    const rawKey = apiKey || env.openRouterApiKey || "";
+    const rawKey = apiKey || env.openRouterApiKey || '';
     this.apiKey = rawKey;
 
-    // Validate key format
     if (this.apiKey) {
-      console.log("[OpenRouter] API key loaded:", this.apiKey.startsWith("sk-or-v1-") ? "valid format" : "invalid format");
-      this.apiKeyValidated = this.apiKey.startsWith("sk-or-v1-");
+      const isValid = this.apiKey.startsWith('sk-or-v1-');
+      console.log(
+        '[OpenRouter] API key loaded:',
+        isValid ? 'valid format' : 'invalid format'
+      );
+      this.apiKeyValidated = isValid;
     } else {
-      console.warn("[OpenRouter] No API key found in environment");
+      console.warn('[OpenRouter] No API key found in environment');
     }
 
     this.model = model;
-    this.streamProcessor = new StreamProcessor(STREAM_CONFIG);
   }
 
-  /**
-   * Check provider availability
-   */
   async isAvailable(): Promise<boolean> {
     if (!this.apiKey || !this.apiKeyValidated) {
-      // Auto-reset health if we get a valid key (e.g., after app restart)
-      if (env.openRouterApiKey && env.openRouterApiKey.startsWith("sk-or-v1-")) {
+      // Re-check env in case key was set after init
+      const envKey = env.openRouterApiKey;
+      if (envKey && envKey.startsWith('sk-or-v1-')) {
         this.resetHealth();
-        this.apiKey = env.openRouterApiKey;
+        this.apiKey = envKey;
         this.apiKeyValidated = true;
+      } else {
+        return false;
       }
-      return false;
     }
     return this.health.isHealthy;
   }
 
   /**
-   * Generate non-streaming response
+   * Non-streaming generate — the only supported path on Expo SDK 54.
    */
   async generate(
     messages: AIMessage[],
     context: HealthContext
   ): Promise<AIMessage> {
-    const response = await this.makeRequest(messages, context, false);
-    const data = await response.json();
+    const response = await this.makeRequest(messages, context);
 
-    const content = data.choices?.[0]?.message?.content || "";
-    return { role: "assistant", content };
+    let raw = '';
+    try {
+      raw = await response.text();
+    } catch (err) {
+      throw new AIProviderError(
+        `Failed to read response text: ${(err as Error).message}`,
+        this.id,
+        500,
+        true
+      );
+    }
+
+    let data: any;
+    try {
+      data = JSON.parse(raw);
+    } catch (err) {
+      throw new AIProviderError(
+        `Failed to parse JSON: ${(err as Error).message} — raw: ${raw.slice(0, 200)}`,
+        this.id,
+        500,
+        false
+      );
+    }
+
+    const content: string = data?.choices?.[0]?.message?.content ?? '';
+    this.markSuccess();
+    return { role: 'assistant', content };
   }
 
   /**
-   * Generate streaming response
+   * Streaming stub — not supported on React Native / Expo SDK 54.
+   *
+   * Falls back to non-streaming generate() and emits a single onChunk call.
+   * This ensures callers that pass onChunk still receive the full response.
    */
   async generateStreaming(
     messages: AIMessage[],
     context: HealthContext,
     onChunk: StreamingCallback,
-    signal?: AbortSignal
+    _signal?: AbortSignal
   ): Promise<string> {
-    // Create local abort controller
-    const localController = new AbortController();
+    console.warn(
+      '[OpenRouter] generateStreaming() is not supported on Expo SDK 54 React Native. ' +
+      'Falling back to non-streaming generate().'
+    );
 
-    // Wire external signal
-    if (signal) {
-      signal.addEventListener("abort", () => {
-        localController.abort();
-      });
+    const result = await this.generate(messages, context);
+    // Emit single full chunk for UI compatibility
+    if (result.content) {
+      try {
+        onChunk(result.content);
+      } catch (err) {
+        console.warn('[OpenRouter] onChunk callback threw:', (err as Error).message);
+      }
     }
-
-    const response = await this.makeRequest(messages, context, true, localController.signal);
-
-    // Process stream
-    const result = await this.streamProcessor.process(response, {
-      onChunk: (content, reasoning) => {
-        // Emit content
-        if (content) {
-          onChunk(content);
-        }
-      },
-      onDone: () => {
-        this.markSuccess();
-      },
-      onError: (error) => {
-        this.markFailure(error.message);
-        throw error;
-      },
-    });
-
     return result.content;
   }
 
-  /**
-   * Make API request
-   */
+  // ── Private helpers ─────────────────────────────────────────────────────────
+
   private async makeRequest(
     messages: AIMessage[],
-    context: HealthContext,
-    stream: boolean,
-    signal?: AbortSignal
+    context: HealthContext
   ): Promise<Response> {
-    // Validate key
     if (!this.apiKey) {
-      throw new AIProviderError("OpenRouter API key not configured", this.id, 401, false);
+      throw new AIProviderError('OpenRouter API key not configured', this.id, 401, false);
     }
-
-    if (!this.apiKey.startsWith("sk-or-v1-")) {
-      throw new AIProviderError("Invalid OpenRouter API key format", this.id, 401, false);
+    if (!this.apiKey.startsWith('sk-or-v1-')) {
+      throw new AIProviderError('Invalid OpenRouter API key format', this.id, 401, false);
     }
 
     const systemPrompt = this.createSystemPrompt(context);
     const allMessages = [
-      { role: "system" as const, content: systemPrompt },
+      { role: 'system' as const, content: systemPrompt },
       ...messages.map(m => ({
-        role: m.role as "system" | "user" | "assistant",
+        role: m.role as 'system' | 'user' | 'assistant',
         content: m.content,
       })),
     ];
 
     try {
-      const response = await fetchWithRetry(API_URL, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://rafiq-health.app",
-          "X-Title": "RAFIQ Health Assistant",
+      const response = await fetchWithRetry(
+        API_URL,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://rafiq-health.app',
+            'X-Title': 'RAFIQ Health Assistant',
+          },
+          body: JSON.stringify({
+            model: this.model,
+            messages: allMessages,
+            max_tokens: 2000,
+            temperature: 0.7,
+            stream: false, // Always false — RN fetch has no ReadableStream
+          }),
+          timeout: FETCH_CONFIG.timeoutMs,
         },
-        body: JSON.stringify({
-          model: this.model,
-          messages: allMessages,
-          max_tokens: 2000,
-          temperature: 0.7,
-          stream,
-        }),
-        timeout: STREAM_CONFIG.timeoutMs,
-      }, STREAM_CONFIG);
+        FETCH_CONFIG
+      );
 
       if (!response.ok) {
+        let errorBody = '';
+        try {
+          errorBody = await response.text();
+        } catch {
+          errorBody = '(unreadable)';
+        }
         const isRetryable = response.status === 429 || response.status >= 500;
+        this.markFailure(`HTTP ${response.status}: ${errorBody.slice(0, 200)}`);
         throw new AIProviderError(
-          `OpenRouter error: ${response.status}`,
+          `OpenRouter error ${response.status}: ${errorBody.slice(0, 200)}`,
           this.id,
           response.status,
           isRetryable
         );
       }
 
-      this.markSuccess();
       return response;
     } catch (error) {
-      if (error instanceof AIProviderError) {
-        throw error;
-      }
+      if (error instanceof AIProviderError) throw error;
       this.markFailure((error as Error).message);
       throw new AIProviderError(
-        (error as Error).message || "Request failed",
+        (error as Error).message || 'Request failed',
         this.id,
         500,
         true
@@ -205,18 +218,16 @@ class OpenRouterProvider implements AIProvider {
     }
   }
 
-  /**
-   * Create healthcare system prompt
-   */
   private createSystemPrompt(context: HealthContext): string {
     const vitals = context.latestVitals;
     const medList = context.medications
       .map(m => `- ${m.name}${m.dosage ? ` (${m.dosage})` : ''}${m.time ? ` at ${m.time}` : ''}`)
       .join('\n');
 
-    const alertsText = context.recentAlerts.length > 0
-      ? context.recentAlerts.map(a => `- ${a}`).join('\n')
-      : '- No recent alerts';
+    const alertsText =
+      context.recentAlerts.length > 0
+        ? context.recentAlerts.map(a => `- ${a}`).join('\n')
+        : '- No recent alerts';
 
     return `You are RAFIQ, a compassionate healthcare AI assistant for a medical monitoring app.
 
@@ -248,38 +259,24 @@ GUIDELINES:
 Remember: You are a health assistant, not a doctor. Always encourage professional medical advice for serious concerns.`;
   }
 
-  /**
-   * Mark successful request
-   */
   private markSuccess(): void {
     this.health.consecutiveFailures = 0;
     this.health.isHealthy = true;
     this.health.lastError = null;
   }
 
-  /**
-   * Mark failed request
-   */
   private markFailure(error: string): void {
     this.health.consecutiveFailures++;
     this.health.lastError = error;
-
-    // Mark unhealthy after 3 consecutive failures
     if (this.health.consecutiveFailures >= 3) {
       this.health.isHealthy = false;
     }
   }
 
-  /**
-   * Get health status
-   */
   getHealth(): ProviderHealth {
     return { ...this.health };
   }
 
-  /**
-   * Reset health state
-   */
   resetHealth(): void {
     this.health = {
       isHealthy: true,
@@ -289,8 +286,6 @@ Remember: You are a health assistant, not a doctor. Always encourage professiona
   }
 }
 
-// Export singleton
 export const openRouterProvider = new OpenRouterProvider();
 export { OpenRouterProvider };
-
 export default openRouterProvider;

@@ -1,6 +1,15 @@
 /**
- * AI Manager - Core orchestration with reasoning persistence
- * Implements provider fallback, streaming, memory, and health context
+ * AI Manager — Core orchestration with reasoning persistence.
+ *
+ * STREAMING REMOVED: Expo SDK 54 React Native fetch does NOT support
+ * response.body / ReadableStream / getReader(). All requests are made
+ * non-streaming (stream: false) and parsed with response.text() → JSON.
+ *
+ * Architecture:
+ *  - Single non-streaming request path
+ *  - Provider fallback via providerManager
+ *  - Reasoning state persistence in memory + AsyncStorage
+ *  - Isolated persistence: generation success never crashes on save failure
  */
 
 import { providerManager } from '../providers/manager';
@@ -17,7 +26,7 @@ import {
   type ReasoningState,
 } from './ReasoningEngine';
 import {
-  parseSSEStream,
+  parseJSONResponse,
   withRetry,
   createTimeoutController,
   type StreamChunk,
@@ -30,7 +39,8 @@ import {
   type HealthInsight,
 } from './HealthContextEngine';
 
-// Response type
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 export interface AIResponse {
   content: string;
   reasoningDetails?: string;
@@ -41,31 +51,33 @@ export interface AIResponse {
   tokensPerSecond?: number;
 }
 
-// Configuration
 export interface AIConfig {
   model: string;
   maxTokens: number;
   temperature: number;
   reasoningEnabled: boolean;
+  /** @deprecated Streaming is not supported on Expo SDK 54 React Native. Always false. */
   streamingEnabled: boolean;
   fallbackEnabled: boolean;
   maxRetries: number;
   timeoutMs: number;
 }
 
-// Default config for OpenRouter with reasoning
+// ── Default configuration ─────────────────────────────────────────────────────
+
 const DEFAULT_CONFIG: AIConfig = {
   model: 'openai/gpt-oss-120b:free',
   maxTokens: 2000,
   temperature: 0.7,
   reasoningEnabled: true,
-  streamingEnabled: true,
+  streamingEnabled: false, // Must remain false — RN fetch has no ReadableStream
   fallbackEnabled: true,
   maxRetries: 3,
   timeoutMs: 60000,
 };
 
-// Streaming config
+// ── Streaming config (kept for interface compatibility only) ──────────────────
+
 const STREAMING_CONFIG: StreamingConfig = {
   throttleMs: 16,
   bufferSize: 3,
@@ -74,9 +86,8 @@ const STREAMING_CONFIG: StreamingConfig = {
   timeoutMs: 60000,
 };
 
-/**
- * AI Manager Class
- */
+// ── AIManager ─────────────────────────────────────────────────────────────────
+
 class AIManager {
   private config: AIConfig;
   private reasoningState: ReasoningState;
@@ -84,185 +95,164 @@ class AIManager {
   private isInitialized = false;
 
   constructor(config: Partial<AIConfig> = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      streamingEnabled: false, // Always false — enforce no streaming
+    };
     this.reasoningState = createReasoningState();
   }
 
-  /**
-   * Initialize with health context
-   */
-  initialize(healthContext: HealthContextData) {
+  // ── Public API ──────────────────────────────────────────────────────────────
+
+  initialize(healthContext: HealthContextData): void {
     this.healthContext = healthContext;
     this.isInitialized = true;
   }
 
-  /**
-   * Update health context
-   */
-  updateHealthContext(context: HealthContextData) {
+  updateHealthContext(context: HealthContextData): void {
     this.healthContext = context;
   }
 
-  /**
-   * Get current reasoning state
-   */
   getReasoningState(): ReasoningState {
     return this.reasoningState;
   }
 
-  /**
-   * Load saved reasoning state
-   */
-  loadReasoningState(state: ReasoningState) {
+  loadReasoningState(state: ReasoningState): void {
     this.reasoningState = state;
   }
 
-  /**
-   * Clear conversation memory
-   */
-  clearMemory() {
+  clearMemory(): void {
     this.reasoningState = createReasoningState();
   }
 
   /**
-   * Generate response with reasoning persistence
+   * Generate an AI response.
+   *
+   * The `onChunk` callback is accepted for interface compatibility but is
+   * called only once at completion — there is no token-by-token streaming
+   * because React Native's fetch runtime does not support ReadableStream.
+   *
+   * Persistence failures are isolated: if the AI response is generated
+   * successfully, the hook receives it regardless of any save errors.
    */
   async generate(
     userMessage: string,
     onChunk?: (chunk: StreamChunk) => void
   ): Promise<AIResponse> {
     if (!this.isInitialized || !this.healthContext) {
-      throw new Error('AI Manager not initialized with health context');
+      throw new Error('[AI Manager] Not initialized. Call initialize() with health context first.');
     }
 
-    // Extract topic from message
+    // Build context
     const topic = extractTopic(userMessage);
-
-    // Prune messages for token budget
     this.reasoningState = pruneForTokenBudget(this.reasoningState);
-
-    // Build health context and insights
     const { insights } = buildHealthContext(this.healthContext);
-
-    // Format system prompt with health context
     const systemPrompt = formatContextForPrompt(this.healthContext, insights);
 
-    // Add user message to state
+    // Record user message in reasoning state
     this.reasoningState = addUserMessage(this.reasoningState, userMessage, topic ?? undefined);
 
-    // Build messages for API
     const messages = this.buildMessagesWithContext(systemPrompt);
 
+    // ── Generation ────────────────────────────────────────────────────────────
+    let aiResponse: AIResponse;
+
     try {
-      // Generate with streaming or non-streaming
-      if (this.config.streamingEnabled && onChunk) {
-        return await this.generateStreaming(messages, onChunk, insights);
-      } else {
-        return await this.generateNonStreaming(messages, insights);
-      }
-    } catch (error) {
-      console.error('[AI Manager] Generation error:', error);
+      aiResponse = await this.generateNonStreaming(messages, insights);
+    } catch (generationError: any) {
+      const errMsg: string = generationError?.message ?? String(generationError);
+      const errStack: string = generationError?.stack ?? '';
+
+      console.error('[AI Manager] Generation error:', {
+        message: errMsg,
+        stack: errStack,
+        provider: this.getProvider().name,
+        model: this.config.model,
+      });
 
       // Try fallback provider
       if (this.config.fallbackEnabled) {
-        console.log('[AI Manager] Trying fallback provider');
-        return await this.generateWithFallback(userMessage, insights);
+        console.log('[AI Manager] Attempting fallback provider after primary failure');
+        try {
+          aiResponse = await this.generateWithFallback(userMessage, insights);
+        } catch (fallbackError: any) {
+          console.error('[AI Manager] Fallback also failed:', {
+            message: fallbackError?.message ?? String(fallbackError),
+          });
+          throw generationError; // Re-throw original for caller context
+        }
+      } else {
+        throw generationError;
       }
-
-      throw error;
     }
+
+    // ── Emit single "done" chunk for UI compatibility ─────────────────────────
+    if (onChunk && aiResponse.content) {
+      try {
+        onChunk({ type: 'content', content: aiResponse.content, done: true });
+      } catch (chunkErr) {
+        console.warn('[AI Manager] onChunk callback threw:', (chunkErr as Error).message);
+      }
+    }
+
+    return aiResponse;
   }
 
-  /**
-   * Generate with streaming
-   */
-  private async generateStreaming(
-    messages: any[],
-    onChunk: (chunk: StreamChunk) => void,
-    insights: HealthInsight[]
-  ): Promise<AIResponse> {
-    const provider = this.getProvider();
-    let fullContent = '';
-    let fullReasoning = '';
-    const startTime = Date.now();
-
-    const response = await this.makeRequest(provider, messages, true);
-
-    const content = await parseSSEStream(
-      response,
-      (chunk) => {
-        if (chunk.type === 'content') {
-          fullContent = chunk.content;
-        }
-        if (chunk.type === 'reasoning') {
-          fullReasoning = chunk.reasoning || '';
-        }
-        onChunk(chunk);
-      },
-      STREAMING_CONFIG
-    );
-
-    // Add assistant message with reasoning to state
-    this.reasoningState = addAssistantMessage(
-      this.reasoningState,
-      content,
-      fullReasoning || undefined
-    );
-
-    const duration = (Date.now() - startTime) / 1000;
-    const tokensPerSecond = Math.round(content.length / 4 / duration);
-
-    return {
-      content,
-      reasoningDetails: fullReasoning || undefined,
-      provider: provider.name,
-      model: provider.id,
-      finishReason: 'stop',
-      insights,
-      tokensPerSecond,
-    };
-  }
+  // ── Private helpers ─────────────────────────────────────────────────────────
 
   /**
-   * Generate without streaming
+   * Non-streaming request — the only supported path on Expo SDK 54.
    */
   private async generateNonStreaming(
     messages: any[],
     insights: HealthInsight[]
   ): Promise<AIResponse> {
     const provider = this.getProvider();
+    const startTime = Date.now();
 
-    const response = await this.makeRequest(provider, messages, false);
-    const data = await response.json();
+    const response = await this.makeRequest(provider, messages);
 
-    const content = data.choices?.[0]?.message?.content || '';
-    const reasoningDetails = data.choices?.[0]?.message?.reasoning;
+    // Safe parsing — never throws "No response body"
+    const { content, reasoning: reasoningDetails, finishReason } = await parseJSONResponse(response);
 
-    // Add to reasoning state
+    if (!content && !reasoningDetails) {
+      console.warn('[AI Manager] Provider returned empty content', {
+        provider: provider.name,
+        model: provider.id,
+        finishReason,
+      });
+    }
+
+    // Persist to reasoning state
     this.reasoningState = addAssistantMessage(
       this.reasoningState,
       content,
       reasoningDetails
     );
 
+    const durationSec = (Date.now() - startTime) / 1000;
+    const tokensPerSecond =
+      durationSec > 0 ? Math.round((content.length / 4) / durationSec) : 0;
+
     return {
       content,
       reasoningDetails,
       provider: provider.name,
       model: provider.id,
-      finishReason: data.choices?.[0]?.finish_reason || 'stop',
+      finishReason,
       insights,
+      tokensPerSecond,
     };
   }
 
   /**
-   * Generate with fallback provider
+   * Fallback via providerManager (also non-streaming).
    */
   private async generateWithFallback(
     userMessage: string,
     insights: HealthInsight[]
   ): Promise<AIResponse> {
-    // Use the fallback provider from manager
     const result = await providerManager.generate(
       this.reasoningState.messages.map(m => ({
         role: m.role as 'user' | 'assistant',
@@ -277,7 +267,6 @@ class AIManager {
       }
     );
 
-    // Add to reasoning state
     this.reasoningState = addAssistantMessage(
       this.reasoningState,
       result.content
@@ -293,14 +282,13 @@ class AIManager {
   }
 
   /**
-   * Build messages with health context
+   * Build messages array including system prompt and reasoning history.
    */
   private buildMessagesWithContext(systemPrompt: string): any[] {
     const messages: any[] = [
       { role: 'system', content: systemPrompt },
     ];
 
-    // Add reasoning history for context
     if (this.reasoningState.reasoningHistory.length > 0) {
       const recentReasoning = this.reasoningState.reasoningHistory.slice(-2).join('\n\n');
       messages.push({
@@ -309,7 +297,6 @@ class AIManager {
       });
     }
 
-    // Add conversation messages
     for (const msg of this.reasoningState.messages) {
       if (msg.role === 'assistant' && msg.reasoningDetails) {
         messages.push({
@@ -328,98 +315,80 @@ class AIManager {
     return messages;
   }
 
-  /**
-   * Get current provider
-   */
   private getProvider(): AIProvider {
     return providerManager.getProvider();
   }
 
   /**
-   * Make API request
+   * Make a non-streaming POST request to the AI provider.
+   * stream is always false — React Native fetch does not support ReadableStream.
    */
   private async makeRequest(
     provider: AIProvider,
-    messages: any[],
-    stream: boolean
+    messages: any[]
   ): Promise<Response> {
     const url = this.getApiUrl(provider.id);
     const headers = this.getHeaders(provider.id);
 
-    const body: any = {
+    const body: Record<string, unknown> = {
       model: this.config.model,
       messages,
       max_tokens: this.config.maxTokens,
       temperature: this.config.temperature,
+      stream: false, // Always false — RN fetch has no ReadableStream
     };
 
-    // Enable reasoning
     if (this.config.reasoningEnabled) {
-      body.reasoning = {
-        effort: 'high',
-      };
-    }
-
-    if (stream) {
-      body.stream = true;
+      body.reasoning = { effort: 'high' };
     }
 
     const controller = createTimeoutController(this.config.timeoutMs);
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (fetchError: any) {
+      throw new Error(
+        `[AI Manager] Network request failed: ${fetchError?.message ?? String(fetchError)}`
+      );
+    }
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`API error: ${response.status} - ${errorText}`);
+      let errorBody = '';
+      try {
+        errorBody = await response.text();
+      } catch {
+        errorBody = '(could not read error body)';
+      }
+      throw new Error(
+        `[AI Manager] API error ${response.status}: ${errorBody.slice(0, 400)}`
+      );
     }
 
     return response;
   }
 
-  /**
-   * Get API URL based on model
-   */
-  private getApiUrl(modelId: string): string {
-    // OpenRouter
-    if (modelId.includes('openrouter') || modelId.includes('gpt-oss')) {
-      return 'https://openrouter.ai/api/v1/chat/completions';
-    }
-
-    // Default to OpenRouter
+  private getApiUrl(_modelId: string): string {
     return 'https://openrouter.ai/api/v1/chat/completions';
   }
 
-  /**
-   * Get API headers
-   */
-  private getHeaders(modelId: string): HeadersInit {
-    const apiKey = this.getApiKey(modelId);
-
+  private getHeaders(_modelId: string): HeadersInit {
     return {
-      'Authorization': `Bearer ${apiKey}`,
+      Authorization: `Bearer ${env.openRouterApiKey || ''}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://rafiq-health.app',
       'X-Title': 'RAFIQ Health Assistant',
     };
   }
-
-  /**
-   * Get API key
-   */
-  private getApiKey(modelId: string): string {
-    // Use env helper
-    return env.openRouterApiKey || '';
-  }
 }
 
-// Export singleton instance
+// ── Singleton export ──────────────────────────────────────────────────────────
+
 export const aiManager = new AIManager();
-
 export { AIManager };
-
 export default aiManager;

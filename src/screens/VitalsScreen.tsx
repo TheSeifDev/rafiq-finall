@@ -16,8 +16,8 @@ import { AppText } from '../components/ui/AppText';
 import { useAuthStore } from '../store/auth.store';
 import { patientService } from '../services/patient.service';
 import { vitalsService, type VitalsRecord } from '../services/vitals.service';
-import { wearableService } from '../services/wearable/ble.service';
-import type { VitalsReading } from '../services/wearable/ble.types';
+import * as wearable from '../services/wearable/ble.service';
+import type { VitalsReading } from '../types/wearable';
 import { useLocale } from '../hooks/useLocale';
 import { useTheme } from '../theme/useTheme';
 import { spacing, radius } from '../theme';
@@ -334,7 +334,7 @@ export function VitalsScreen(): React.JSX.Element {
   const [signalQuality, setSignalQuality] = useState<string>('good');
   const [lastSync, setLastSync] = useState<number | null>(null);
 
-  const isSimulated = wearableService.isSimulated;
+  const isSimulated = wearable.isSimulated;
 
   const load = useCallback(async () => {
     if (!session?.user.id) return;
@@ -364,31 +364,47 @@ export function VitalsScreen(): React.JSX.Element {
     };
   }, []);
 
-  // Live vitals subscription
+  // Live vitals polling (new wearable service)
   useEffect(() => {
-    const unsub = wearableService.onVitals((reading) => {
-      setLiveReading(reading);
-      setLastSync(Date.now());
-      logger.wearable.reading('heart_rate', reading.heart_rate, isSimulated ? 'simulated' : 'bluetooth');
-    });
-    return unsub;
-  }, [isSimulated]);
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const pollVitals = async () => {
+      try {
+        const userId = session?.user?.id;
+        if (!userId) return;
+        const reading = await wearable.readVitals(userId);
+        setLiveReading(reading);
+        setLastSync(Date.now());
+        logger.wearable.reading('heart_rate', reading.heart_rate, 'wearable');
+      } catch {
+        // Ignore errors during polling
+      }
+    };
+
+    // Poll every 10 seconds for new vitals
+    intervalId = setInterval(pollVitals, 10000);
+    pollVitals(); // Initial fetch
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [session?.user?.id]);
 
   const handleConnect = useCallback(async () => {
     setConnecting(true);
     setError(null);
     try {
-      const devs = await wearableService.scan();
+      const devs = await wearable.scan();
       if (devs.length === 0) {
         setError(isRTL ? 'لم يتم العثور على أجهزة' : 'No devices found');
         return;
       }
-      await wearableService.connect(devs[0].id);
+      await wearable.connect(devs[0].id);
       setDevice(devs[0].name);
       healthMonitor.setDevice(devs[0].id, devs[0].name);
       logger.wearable.connected(devs[0].name, devs[0].id);
 
-      const v = await wearableService.readVitals();
+      const v = await wearable.readVitals(session?.user?.id || '');
       setLiveReading(v);
       setLastSync(Date.now());
 
@@ -402,10 +418,10 @@ export function VitalsScreen(): React.JSX.Element {
     } finally {
       setConnecting(false);
     }
-  }, [isRTL]);
+  }, [session?.user?.id, isRTL]);
 
   const handleDisconnect = useCallback(async () => {
-    await wearableService.disconnect();
+    await wearable.disconnect();
     setDevice(null);
     setLiveReading(null);
     setBatteryLevel(null);
