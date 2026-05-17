@@ -375,3 +375,23 @@ CREATE TABLE IF NOT EXISTS wearable_sync_queue (
 );
 CREATE INDEX IF NOT EXISTS idx_wearable_sync_queue_status ON wearable_sync_queue(status);
 CREATE INDEX IF NOT EXISTS idx_wearable_sync_queue_user ON wearable_sync_queue(user_id);
+
+-- Patient Profile Validation (tracked for reminders)
+CREATE TABLE IF NOT EXISTS patient_profile_validation (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  missing_fields TEXT NOT NULL,
+  completion_percentage REAL NOT NULL,
+  is_complete INTEGER NOT NULL DEFAULT 0,
+  last_notification_sent TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  version INTEGER DEFAULT 1,
+  updated_by_device TEXT,
+  is_deleted INTEGER DEFAULT 0,
+  deleted_at TEXT,
+  deleted_by TEXT,
+  FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_patient_validation_user ON patient_profile_validation(user_id);
+CREATE INDEX IF NOT EXISTS idx_patient_validation_complete ON patient_profile_validation(is_complete);
